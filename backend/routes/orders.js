@@ -3,8 +3,19 @@ const mongoose = require("mongoose");
 const authJwt = require("../middleware/authJwt");
 const Order = require("../models/Order");
 const Review = require("../models/Review");
+const Product = require("../models/Product");
+const VoucherRedemption = require("../models/VoucherRedemption");
 const User = require("../models/User");
 const { sendToTokens } = require("../services/notifications");
+const {
+  calculateDiscountedPrice,
+  loadActivePromosForProducts,
+  buildPromoMap,
+  findActiveVoucherByCode,
+  getEligibleItemsForCampaign,
+  computeVoucherDiscount,
+  toMoney,
+} = require("../services/promoPricing");
 
 const router = express.Router();
 
@@ -22,6 +33,55 @@ function normalizeStatus(value) {
   if (lowered === "2") return STATUS.SHIPPED;
   if (lowered === "1") return STATUS.DELIVERED;
   return lowered;
+}
+
+function aggregateProductQuantities(items = []) {
+  const quantityMap = new Map();
+
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const productId = item?.product?.toString?.() || item?.product;
+    if (!productId || !mongoose.Types.ObjectId.isValid(productId)) return;
+
+    const quantity = Math.max(1, Number(item?.quantity || 1));
+    quantityMap.set(String(productId), Number(quantityMap.get(String(productId)) || 0) + quantity);
+  });
+
+  return [...quantityMap.entries()].map(([productId, quantity]) => ({ productId, quantity }));
+}
+
+async function reserveStockForItems(items = []) {
+  const aggregated = aggregateProductQuantities(items);
+  const appliedReservations = [];
+
+  for (const entry of aggregated) {
+    const reserved = await Product.findOneAndUpdate(
+      { _id: entry.productId, countInStock: { $gte: entry.quantity } },
+      { $inc: { countInStock: -entry.quantity } },
+      { new: true, projection: "_id name countInStock" }
+    ).lean();
+
+    if (!reserved) {
+      for (const applied of appliedReservations) {
+        await Product.findByIdAndUpdate(applied.productId, { $inc: { countInStock: applied.quantity } });
+      }
+
+      const product = await Product.findById(entry.productId, "name countInStock").lean();
+      const productName = product?.name || "Product";
+      const available = Math.max(0, Number(product?.countInStock || 0));
+      throw new Error(`Insufficient stock for ${productName}. Available: ${available}`);
+    }
+
+    appliedReservations.push(entry);
+  }
+
+  return appliedReservations;
+}
+
+async function restoreStockForItems(items = []) {
+  const aggregated = aggregateProductQuantities(items);
+  for (const entry of aggregated) {
+    await Product.findByIdAndUpdate(entry.productId, { $inc: { countInStock: entry.quantity } });
+  }
 }
 
 async function attachReviewFlagsForUserOrders(userId, orders) {
@@ -60,8 +120,11 @@ async function attachReviewFlagsForUserOrders(userId, orders) {
 
 // POST /orders — authenticated user places an order
 router.post("/", authJwt, async (req, res) => {
+  let reservedStockAdjustments = [];
+  let createdOrderId = null;
+
   try {
-    const { orderItems } = req.body;
+    const { orderItems, voucherCode } = req.body;
 
     if (!orderItems || orderItems.length === 0) {
       return res.status(400).json({ message: "Order must contain at least one item" });
@@ -85,10 +148,8 @@ router.post("/", authJwt, async (req, res) => {
       });
     }
 
-    // Map each cart item to the embedded orderItem shape.
-    // Cart items from Redux store have the full product object spread with a quantity field.
     // product id may come as item.id, item._id, or item.product
-    const mappedItems = orderItems.map((item) => {
+    const requestedItems = orderItems.map((item) => {
       const productId =
         item.product ||
         item.id ||
@@ -100,18 +161,108 @@ router.post("/", authJwt, async (req, res) => {
 
       return {
         product: productId,
-        name: item.name || "",
-        price: Number(item.price) || 0,
-        image: item.image || "",
         quantity: Number(item.quantity) || 1,
       };
     });
 
-    // Calculate total price server-side to prevent tampering
-    const totalPrice = mappedItems.reduce(
-      (sum, item) => sum + item.price * item.quantity,
-      0
+    const productIds = requestedItems.map((item) => item.product);
+    const uniqueProductIds = [...new Set(productIds)];
+    const productDocs = await Product.find({ _id: { $in: uniqueProductIds } }, "name image price countInStock").lean();
+    const productMap = new Map(productDocs.map((product) => [product._id.toString(), product]));
+
+    if (productDocs.length !== uniqueProductIds.length) {
+      return res.status(400).json({ message: "One or more products no longer exist" });
+    }
+
+    const activePromos = await loadActivePromosForProducts(productIds);
+    const promoMap = buildPromoMap(productIds, activePromos);
+
+    const mappedItems = requestedItems.map((item) => {
+      const product = productMap.get(item.product);
+      if (!product) {
+        throw new Error(`Product not found during checkout: ${item.product}`);
+      }
+
+      const promo = promoMap.get(item.product);
+      const pricing = promo
+        ? calculateDiscountedPrice(Number(product.price) || 0, promo.discountType, promo.discountValue)
+        : calculateDiscountedPrice(Number(product.price) || 0, "fixed", 0);
+
+      return {
+        product: item.product,
+        name: product.name || "",
+        basePrice: Number(product.price) || 0,
+        price: pricing.discountedPrice,
+        image: product.image || "",
+        quantity: item.quantity,
+      };
+    });
+
+    const subtotalBase = toMoney(
+      mappedItems.reduce((sum, item) => sum + (Number(item.basePrice) || 0) * (Number(item.quantity) || 1), 0)
     );
+
+    const promoSubtotal = toMoney(
+      mappedItems.reduce((sum, item) => sum + (Number(item.price) || 0) * (Number(item.quantity) || 1), 0)
+    );
+
+    let voucherDiscountTotal = 0;
+    let appliedVoucher = null;
+
+    const normalizedVoucherCode = String(voucherCode || "").trim().toUpperCase();
+    if (normalizedVoucherCode) {
+      const voucher = await findActiveVoucherByCode(normalizedVoucherCode);
+      if (!voucher) {
+        return res.status(400).json({ message: "Voucher not found or not active" });
+      }
+
+      const usagePolicy = String(voucher.usagePolicy || "none");
+      if (usagePolicy === "one_time_total" && Number(voucher.usedCount || 0) >= 1) {
+        return res.status(400).json({ message: "Voucher already used" });
+      }
+      if (usagePolicy === "global_limit" && Number(voucher.usedCount || 0) >= Number(voucher.globalLimit || 0)) {
+        return res.status(400).json({ message: "Voucher reached global usage limit" });
+      }
+      if (usagePolicy === "per_user_limit") {
+        const usedByUser = await VoucherRedemption.countDocuments({ campaign: voucher._id, user: req.user.userId });
+        if (usedByUser >= Number(voucher.perUserLimit || 0)) {
+          return res.status(400).json({ message: "Voucher usage limit reached for this user" });
+        }
+      }
+
+      if (promoSubtotal < Number(voucher.minOrderAmount || 0)) {
+        return res.status(400).json({ message: `Minimum order amount is ${voucher.minOrderAmount}` });
+      }
+
+      const voucherEligibleItems = getEligibleItemsForCampaign(
+        mappedItems.map((item) => ({
+          product: item.product,
+          lineTotal: toMoney((Number(item.price) || 0) * (Number(item.quantity) || 1)),
+        })),
+        voucher
+      );
+
+      const eligibleSubtotal = toMoney(voucherEligibleItems.reduce((sum, item) => sum + item.lineTotal, 0));
+      if (eligibleSubtotal <= 0) {
+        return res.status(400).json({ message: "Voucher does not apply to items in this order" });
+      }
+
+      voucherDiscountTotal = computeVoucherDiscount(voucher, eligibleSubtotal);
+      appliedVoucher = {
+        campaignId: voucher._id,
+        code: voucher.code,
+        discountType: voucher.discountType,
+        discountValue: Number(voucher.discountValue || 0),
+        discountAmount: voucherDiscountTotal,
+      };
+    }
+
+    // Calculate total price server-side to prevent tampering
+    const promoDiscountTotal = toMoney(subtotalBase - promoSubtotal);
+    const totalPrice = toMoney(Math.max(0, promoSubtotal - voucherDiscountTotal));
+
+    // Reserve stock immediately at order placement (pending) to avoid overselling.
+    reservedStockAdjustments = await reserveStockForItems(mappedItems);
 
     const order = await Order.create({
       orderItems: mappedItems,
@@ -122,10 +273,28 @@ router.post("/", authJwt, async (req, res) => {
       country,
       phone,
       status: STATUS.PENDING,
+      stockReserved: true,
+      subtotalBase,
+      promoDiscountTotal,
+      voucherDiscountTotal,
       totalPrice,
+      appliedVoucher: appliedVoucher || undefined,
       user: req.user.userId,
       dateOrdered: new Date(),
     });
+    createdOrderId = order._id;
+
+    if (appliedVoucher?.campaignId) {
+      await VoucherRedemption.create({
+        campaign: appliedVoucher.campaignId,
+        order: order._id,
+        user: req.user.userId,
+        code: appliedVoucher.code,
+        discountAmount: appliedVoucher.discountAmount,
+      });
+
+      await mongoose.model("Promo").findByIdAndUpdate(appliedVoucher.campaignId, { $inc: { usedCount: 1 } });
+    }
 
     const admins = await User.find({ isAdmin: true, pushToken: { $ne: "" } }, "pushToken pushTokenType").lean();
     const adminTokens = admins
@@ -140,6 +309,21 @@ router.post("/", authJwt, async (req, res) => {
     return res.status(201).json(order);
   } catch (error) {
     console.error("[orders] POST error:", error.message);
+
+    if (!createdOrderId && reservedStockAdjustments.length > 0) {
+      try {
+        await restoreStockForItems(reservedStockAdjustments.map((entry) => ({
+          product: entry.productId,
+          quantity: entry.quantity,
+        })));
+      } catch (_rollbackError) {
+        // Best effort rollback; keep original error response.
+      }
+    }
+
+    if (String(error?.message || "").toLowerCase().includes("insufficient stock")) {
+      return res.status(400).json({ message: error.message });
+    }
     return res.status(500).json({ message: error.message || "Failed to create order" });
   }
 });
@@ -241,11 +425,23 @@ router.put("/:id", authJwt, async (req, res) => {
       return res.status(403).json({ message: "Status change not allowed" });
     }
 
+    const updateDoc = { status: desiredStatus };
+
+    // Legacy compatibility: if old orders were never reserved, reserve right before delivery.
+    if (desiredStatus === STATUS.DELIVERED && currentStatus !== STATUS.DELIVERED && existing.stockReserved !== true) {
+      await reserveStockForItems(existing.orderItems || []);
+      updateDoc.stockReserved = true;
+    }
+
+    // Restore reserved stock only when cancellation happens.
+    if (desiredStatus === STATUS.CANCELLED && currentStatus !== STATUS.CANCELLED && existing.stockReserved === true) {
+      await restoreStockForItems(existing.orderItems || []);
+      updateDoc.stockReserved = false;
+    }
+
     const updated = await Order.findByIdAndUpdate(
       req.params.id,
-      {
-        status: desiredStatus,
-      },
+      updateDoc,
       { new: true }
     ).populate("user", "id name email");
 

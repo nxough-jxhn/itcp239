@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useContext } from "react";
 import {
     View,
     Text,
@@ -16,11 +16,14 @@ import mime from "mime";
 import Toast from "react-native-toast-message";
 import baseURL from "../../assets/common/baseurl";
 import { getJwtToken } from "../../assets/common/authToken";
+import AuthGlobal from "../../Context/Store/AuthGlobal";
 
 const MAX_IMAGES = 3;
 
 const LeaveReview = ({ route, navigation }) => {
-    const { orderId, productId, productName } = route.params || {};
+    const context = useContext(AuthGlobal);
+    const isAdmin = context?.stateUser?.user?.isAdmin === true;
+    const { orderId, productId, productName, preloadedReview } = route.params || {};
     const [rating, setRating] = useState(5);
     const [comment, setComment] = useState("");
     const [existingReview, setExistingReview] = useState(null);
@@ -39,6 +42,16 @@ const LeaveReview = ({ route, navigation }) => {
         let isMounted = true;
 
         const loadExisting = async () => {
+            if (preloadedReview) {
+                const review = preloadedReview;
+                setExistingReview(review);
+                setRating(Number(review.rating || 5));
+                setComment(review.comment || "");
+                setExistingImages(Array.isArray(review.images) ? review.images : []);
+                setLoading(false);
+                return;
+            }
+
             if (!productId || !orderId) {
                 setLoading(false);
                 return;
@@ -73,7 +86,7 @@ const LeaveReview = ({ route, navigation }) => {
         return () => {
             isMounted = false;
         };
-    }, [orderId, productId]);
+    }, [orderId, productId, preloadedReview]);
 
     const pickImages = async () => {
         const remain = MAX_IMAGES - totalMediaCount;
@@ -125,7 +138,9 @@ const LeaveReview = ({ route, navigation }) => {
             const formData = new FormData();
             formData.append("rating", String(rating));
             formData.append("comment", String(comment || "").trim());
-            formData.append("orderId", String(orderId));
+            if (orderId) {
+                formData.append("orderId", String(orderId));
+            }
             formData.append("existingImages", JSON.stringify(existingImages));
 
             pickedImages.forEach((uri) => appendImageFile(formData, uri));
@@ -142,6 +157,10 @@ const LeaveReview = ({ route, navigation }) => {
                 await axios.put(`${baseURL}products/${productId}/reviews/${reviewId}`, formData, config);
                 Toast.show({ topOffset: 60, type: "success", text1: "Review updated" });
             } else {
+                if (!orderId) {
+                    Toast.show({ topOffset: 60, type: "error", text1: "Missing order reference for new review" });
+                    return;
+                }
                 await axios.post(`${baseURL}products/${productId}/reviews`, formData, config);
                 Toast.show({ topOffset: 60, type: "success", text1: "Review submitted" });
             }
@@ -160,6 +179,15 @@ const LeaveReview = ({ route, navigation }) => {
             <View style={styles.center}>
                 <ActivityIndicator size="small" color="#111" />
                 <Text style={styles.loadingText}>Loading review form...</Text>
+            </View>
+        );
+    }
+
+    if (isAdmin) {
+        return (
+            <View style={styles.center}>
+                <Text style={styles.title}>Customer-only page</Text>
+                <Text style={styles.loadingText}>Admins cannot submit or edit reviews.</Text>
             </View>
         );
     }

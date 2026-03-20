@@ -6,38 +6,26 @@ import {
     View,
     Text,
 } from "react-native";
-import { Badge } from "react-native-paper";
 
 const CategoryFilter = (props) => {
     return (
         <ScrollView
             bounces={true}
             horizontal={true}
-            style={{ backgroundColor: "#f2f2f2" }}
+            showsHorizontalScrollIndicator={false}
+            style={{ backgroundColor: "#fff" }}
+            contentContainerStyle={styles.scrollContent}
         >
-            <View
-                style={{
-                    width: "100%",
-                    display: "flex",
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                }}
-            >
+            <View style={styles.row}>
                 <TouchableOpacity
                     onPress={() => {
                         props.categoryFilter("all");
                         props.setActive(-1);
                     }}
                 >
-                    <Badge
-                        style={[
-                            styles.center,
-                            { margin: 4 },
-                            props.active === -1 ? styles.active : styles.inactive,
-                        ]}
-                    >
-                        <Text style={{ color: "white" }}>all</Text>
-                    </Badge>
+                    <View style={[styles.chip, props.active === -1 ? styles.active : styles.inactive]}>
+                        <Text style={[styles.chipText, props.active === -1 ? styles.activeText : styles.inactiveText]}>All</Text>
+                    </View>
                 </TouchableOpacity>
                 {props.categories.map((item) => {
                     const catId = item.id || item._id;
@@ -49,17 +37,25 @@ const CategoryFilter = (props) => {
                                 props.setActive(props.categories.indexOf(item));
                             }}
                         >
-                            <Badge
+                            <View
                                 style={[
-                                    styles.center,
-                                    { margin: 5 },
+                                    styles.chip,
                                     props.active === props.categories.indexOf(item)
                                         ? styles.active
                                         : styles.inactive,
                                 ]}
                             >
-                                <Text style={{ color: "white" }}>{item.name}</Text>
-                            </Badge>
+                                <Text
+                                    style={[
+                                        styles.chipText,
+                                        props.active === props.categories.indexOf(item)
+                                            ? styles.activeText
+                                            : styles.inactiveText,
+                                    ]}
+                                >
+                                    {item.name}
+                                </Text>
+                            </View>
                         </TouchableOpacity>
                     );
                 })}
@@ -69,15 +65,40 @@ const CategoryFilter = (props) => {
 };
 
 const styles = StyleSheet.create({
-    center: {
-        justifyContent: "center",
+    scrollContent: {
+        paddingHorizontal: 10,
+        paddingBottom: 4,
+    },
+    row: {
+        flexDirection: "row",
         alignItems: "center",
     },
+    chip: {
+        minHeight: 40,
+        borderRadius: 20,
+        paddingHorizontal: 16,
+        alignItems: "center",
+        justifyContent: "center",
+        marginRight: 7,
+    },
     active: {
-        backgroundColor: "#03bafc",
+        backgroundColor: "#111",
     },
     inactive: {
-        backgroundColor: "#a0e1eb",
+        backgroundColor: "#fff",
+        borderWidth: 1,
+        borderColor: "#e5e5e5",
+    },
+    chipText: {
+        fontWeight: "700",
+        fontSize: 13,
+        textTransform: "capitalize",
+    },
+    activeText: {
+        color: "#fff",
+    },
+    inactiveText: {
+        color: "#999",
     },
 });
 

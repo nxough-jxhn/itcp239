@@ -111,6 +111,14 @@ const Products = () => {
                 <EasyButton
                     secondary
                     medium
+                    onPress={() => navigation.navigate("Dashboard")}
+                >
+                    <Ionicons name="speedometer-outline" size={18} color="white" />
+                    <Text style={styles.buttonText}>Dashboard</Text>
+                </EasyButton>
+                <EasyButton
+                    secondary
+                    medium
                     onPress={() => navigation.navigate("Orders")}
                 >
                     <Ionicons name="bag-outline" size={18} color="white" />
@@ -138,7 +146,7 @@ const Products = () => {
                     onPress={() => navigation.navigate("Promo Broadcast")}
                 >
                     <Ionicons name="megaphone-outline" size={18} color="white" />
-                    <Text style={styles.buttonText}>Promo</Text>
+                    <Text style={styles.buttonText}>Promos</Text>
                 </EasyButton>
                 <EasyButton
                     secondary

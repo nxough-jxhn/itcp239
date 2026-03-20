@@ -46,6 +46,10 @@ const OrderCard = ({ item, update, isAdmin = false, onStatusUpdated }) => {
     const [cardColor, setCardColor] = useState("");
     const [isUpdating, setIsUpdating] = useState(false);
     const navigation = useNavigation();
+    const subtotalBase = Number(item?.subtotalBase || 0);
+    const promoDiscountTotal = Number(item?.promoDiscountTotal || 0);
+    const voucherDiscountTotal = Number(item?.voucherDiscountTotal || 0);
+    const totalPrice = Number(item?.totalPrice || 0);
 
     const currentStatus = normalizeStatus(item.status);
     const transitions = isAdmin ? adminTransitions : userTransitions;
@@ -147,9 +151,27 @@ const OrderCard = ({ item, update, isAdmin = false, onStatusUpdated }) => {
                 <Text>City: {item.city}</Text>
                 <Text>Country: {item.country}</Text>
                 <Text>Date Ordered: {item.dateOrdered.split("T")[0]}</Text>
-                <View style={styles.priceContainer}>
-                    <Text>Price: </Text>
-                    <Text style={styles.price}>$ {item.totalPrice}</Text>
+                <View style={styles.priceBreakdownBox}>
+                    <View style={styles.priceBreakdownRow}>
+                        <Text style={styles.breakdownLabel}>Subtotal (Original)</Text>
+                        <Text style={styles.breakdownValue}>$ {subtotalBase.toFixed(2)}</Text>
+                    </View>
+                    <View style={styles.priceBreakdownRow}>
+                        <Text style={styles.breakdownLabel}>Promo Discount</Text>
+                        <Text style={styles.discountValue}>- $ {promoDiscountTotal.toFixed(2)}</Text>
+                    </View>
+                    <View style={styles.priceBreakdownRow}>
+                        <Text style={styles.breakdownLabel}>Cart Total (After Promo)</Text>
+                        <Text style={styles.breakdownValue}>$ {Math.max(0, subtotalBase - promoDiscountTotal).toFixed(2)}</Text>
+                    </View>
+                    <View style={styles.priceBreakdownRow}>
+                        <Text style={styles.breakdownLabel}>Voucher Discount</Text>
+                        <Text style={styles.discountValue}>- $ {voucherDiscountTotal.toFixed(2)}</Text>
+                    </View>
+                    <View style={styles.priceBreakdownTotalRow}>
+                        <Text style={styles.breakdownTotalLabel}>Final Payable</Text>
+                        <Text style={styles.breakdownTotalValue}>$ {totalPrice.toFixed(2)}</Text>
+                    </View>
                 </View>
 
                 {!isAdmin && Array.isArray(item.orderItems) && item.orderItems.length > 0 ? (
@@ -225,14 +247,50 @@ const styles = StyleSheet.create({
         margin: 10,
         borderRadius: 10,
     },
-    priceContainer: {
+    priceBreakdownBox: {
         marginTop: 10,
-        alignSelf: "flex-end",
-        flexDirection: "row",
+        borderTopWidth: 1,
+        borderTopColor: "rgba(255,255,255,0.45)",
+        paddingTop: 10,
     },
-    price: {
+    priceBreakdownRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 3,
+    },
+    priceBreakdownTotalRow: {
+        marginTop: 4,
+        paddingTop: 6,
+        borderTopWidth: 1,
+        borderTopColor: "rgba(255,255,255,0.35)",
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+    },
+    breakdownLabel: {
+        color: "#f3f3f3",
+        fontSize: 12,
+    },
+    breakdownValue: {
+        color: "#fff",
+        fontWeight: "700",
+        fontSize: 12,
+    },
+    discountValue: {
+        color: "#d6ffd6",
+        fontWeight: "800",
+        fontSize: 12,
+    },
+    breakdownTotalLabel: {
+        color: "#fff",
+        fontWeight: "800",
+        fontSize: 13,
+    },
+    breakdownTotalValue: {
         color: "white",
-        fontWeight: "bold",
+        fontWeight: "800",
+        fontSize: 16,
     },
     reviewSection: {
         marginTop: 12,

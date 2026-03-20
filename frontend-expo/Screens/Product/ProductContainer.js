@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useContext, useMemo } from "react";
 import {
     View,
     StyleSheet,
@@ -6,264 +6,309 @@ import {
     ScrollView,
     Text,
     TouchableOpacity,
+    RefreshControl,
+    Image,
+    Platform,
 } from "react-native";
-import { Searchbar } from "react-native-paper";
-import Slider from "@react-native-community/slider";
-import { useNavigation } from "@react-navigation/native";
-import { DrawerActions } from "@react-navigation/native";
+import Swiper from "react-native-swiper";
+import { useNavigation, DrawerActions, useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useDispatch, useSelector } from "react-redux";
-import ProductList from "./ProductList";
-import SearchedProduct from "./SearchedProduct";
-import Banner from "../../Shared/Banner";
-import CategoryFilter from "./CategoryFilter";
 import CartIcon from "../../Shared/CartIcon";
 import axios from "axios";
 import baseURL from "../../assets/common/baseurl";
-import { useFocusEffect } from "@react-navigation/native";
 import { fetchProducts } from "../../Redux/Actions/productActions";
+import { fetchWishlistIds, toggleWishlistProduct } from "../../Redux/Actions/wishlistActions";
+import AuthGlobal from "../../Context/Store/AuthGlobal";
+import { addToCart } from "../../Redux/Actions/cartActions";
+import Toast from "react-native-toast-message";
 
-var { height, width } = Dimensions.get("window");
+const { width } = Dimensions.get("window");
+const FALLBACK_IMAGE = "https://cdn.pixabay.com/photo/2012/04/01/17/29/box-23649_960_720.png";
+const bannerData = [
+    require("../../assets/images/carousel1-sample.png"),
+    require("../../assets/images/carousel2-sample.png"),
+    require("../../assets/images/carousel3-sample.png"),
+];
 
 const ProductContainer = () => {
+    const REQUEST_TIMEOUT_MS = 8000;
     const navigation = useNavigation();
     const dispatch = useDispatch();
+    const context = useContext(AuthGlobal);
+    const isAdmin = context?.stateUser?.user?.isAdmin === true;
     const productsFromStore = useSelector((state) => state.products?.list || []);
-    const [productsFiltered, setProductsFiltered] = useState([]);
-    const [focus, setFocus] = useState(false);
+    const wishlistIds = useSelector((state) => state.wishlist?.ids || []);
+
     const [categories, setCategories] = useState([]);
-    const [active, setActive] = useState(-1);
-    const [initialState, setInitialState] = useState([]);
-    const [productsCtg, setProductsCtg] = useState([]);
-    const [keyword, setKeyword] = useState("");
-    const [selectedCategory, setSelectedCategory] = useState("all");
-    const [priceFloor, setPriceFloor] = useState(0);
-    const [priceCeil, setPriceCeil] = useState(1000);
-    const [minPrice, setMinPrice] = useState(0);
-    const [maxPrice, setMaxPrice] = useState(1000);
+    const [refreshing, setRefreshing] = useState(false);
 
-    const applyFilters = (sourceProducts, overrides = {}) => {
-        const products = Array.isArray(sourceProducts) ? sourceProducts : [];
-        const nextKeyword = overrides.keyword !== undefined ? overrides.keyword : keyword;
-        const nextCategory = overrides.category !== undefined ? overrides.category : selectedCategory;
-        const nextMinPrice = overrides.minPrice !== undefined ? overrides.minPrice : minPrice;
-        const nextMaxPrice = overrides.maxPrice !== undefined ? overrides.maxPrice : maxPrice;
+    const loadCatalogData = useCallback(async () => {
+        dispatch(fetchProducts());
 
-        const filtered = products.filter((product) => {
-            const productName = String(product?.name || "").toLowerCase();
-            const matchesSearch = !nextKeyword || productName.includes(String(nextKeyword).toLowerCase());
+        try {
+            const res = await axios.get(`${baseURL}categories`, { timeout: REQUEST_TIMEOUT_MS });
+            setCategories(Array.isArray(res?.data) ? res.data : []);
+        } catch (_error) {
+            setCategories([]);
+        }
+    }, [dispatch]);
 
-            const categoryId = product?.category?.id || product?.category?._id || product?.category;
-            const matchesCategory = nextCategory === "all" || String(categoryId) === String(nextCategory);
-
-            const price = Number(product?.price || 0);
-            const matchesPrice = price >= Number(nextMinPrice || 0) && price <= Number(nextMaxPrice || 0);
-
-            return matchesSearch && matchesCategory && matchesPrice;
-        });
-
-        setProductsFiltered(filtered);
-        setProductsCtg(filtered);
-    };
-
-    const onBlur = () => setFocus(false);
-
-    const changeCtg = (ctg) => {
-        const category = ctg || "all";
-        setSelectedCategory(category);
-        applyFilters(initialState, { category });
-    };
-
-    const onChangeSearch = (text) => {
-        setKeyword(text);
-        applyFilters(initialState, { keyword: text });
-    };
-
-    const onChangeMinPrice = (value) => {
-        const rounded = Math.floor(value);
-        const nextMin = Math.min(rounded, maxPrice);
-        setMinPrice(nextMin);
-        applyFilters(initialState, { minPrice: nextMin });
-    };
-
-    const onChangeMaxPrice = (value) => {
-        const rounded = Math.floor(value);
-        const nextMax = Math.max(rounded, minPrice);
-        setMaxPrice(nextMax);
-        applyFilters(initialState, { maxPrice: nextMax });
-    };
-
-    const resetFilters = () => {
-        setActive(-1);
-        setSelectedCategory("all");
-        setKeyword("");
-        setMinPrice(priceFloor);
-        setMaxPrice(priceCeil);
-        applyFilters(initialState, {
-            category: "all",
-            keyword: "",
-            minPrice: priceFloor,
-            maxPrice: priceCeil,
-        });
-    };
+    const getCategoryId = (product) => String(product?.category?.id || product?.category?._id || product?.category || "");
+    const getCategoryName = (product) => String(product?.category?.name || "Category");
 
     useFocusEffect(
         useCallback(() => {
-            setFocus(false);
-            setActive(-1);
-            dispatch(fetchProducts());
-
-            axios
-                .get(`${baseURL}categories`)
-                .then((res) => setCategories(res.data))
-                .catch((error) => console.log("Api categories call error"));
+            loadCatalogData();
+            if (context?.stateUser?.isAuthenticated) {
+                dispatch(fetchWishlistIds());
+            }
 
             return () => {
-                setProductsFiltered([]);
                 setCategories([]);
-                setInitialState([]);
             };
-        }, [dispatch])
+        }, [loadCatalogData, context?.stateUser?.isAuthenticated, dispatch])
     );
 
-    useFocusEffect(
-        useCallback(() => {
-            const fetched = Array.isArray(productsFromStore) ? productsFromStore : [];
-            const prices = fetched.map((item) => Number(item?.price || 0));
-            const min = prices.length ? Math.floor(Math.min(...prices)) : 0;
-            const max = prices.length ? Math.ceil(Math.max(...prices)) : 1000;
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await loadCatalogData();
+        setRefreshing(false);
+    }, [loadCatalogData]);
 
-            setInitialState(fetched);
-            setPriceFloor(min);
-            setPriceCeil(max);
-            setMinPrice(min);
-            setMaxPrice(max);
-            setSelectedCategory("all");
-            setKeyword("");
-            setProductsFiltered(fetched);
-            setProductsCtg(fetched);
-        }, [productsFromStore])
-    );
+    const filteredProducts = useMemo(() => {
+        return Array.isArray(productsFromStore) ? productsFromStore : [];
+    }, [productsFromStore]);
 
-    const renderFilterPanel = () => (
-        <View style={styles.filterPanel}>
-            <View style={styles.filterHeaderRow}>
-                <Text style={styles.filterTitle}>Price Range</Text>
-                <TouchableOpacity style={styles.resetBtn} onPress={resetFilters}>
-                    <Text style={styles.resetBtnText}>Reset</Text>
-                </TouchableOpacity>
-            </View>
-            <Text style={styles.priceText}>Min: ${Number(minPrice).toFixed(0)}</Text>
-            <Slider
-                minimumValue={priceFloor}
-                maximumValue={priceCeil}
-                value={minPrice}
-                onValueChange={onChangeMinPrice}
-                step={1}
-                minimumTrackTintColor="#111"
-                maximumTrackTintColor="#bbb"
-            />
-            <Text style={styles.priceText}>Max: ${Number(maxPrice).toFixed(0)}</Text>
-            <Slider
-                minimumValue={priceFloor}
-                maximumValue={priceCeil}
-                value={maxPrice}
-                onValueChange={onChangeMaxPrice}
-                step={1}
-                minimumTrackTintColor="#111"
-                maximumTrackTintColor="#bbb"
-            />
-        </View>
-    );
+    const categoryShowcase = useMemo(() => {
+        if (!Array.isArray(categories) || categories.length === 0) return [];
+
+        return categories
+            .map((category) => {
+                const catId = String(category?.id || category?._id || "");
+                const firstMatch = filteredProducts.find((product) => getCategoryId(product) === catId);
+                if (!firstMatch) return null;
+                return {
+                    id: `cat-${catId}`,
+                    categoryId: catId,
+                    categoryName: String(category?.name || "Category"),
+                    product: firstMatch,
+                };
+            })
+            .filter(Boolean);
+    }, [categories, filteredProducts]);
+
+    const toggleWishlist = async (productId) => {
+        const id = String(productId || "").trim();
+        if (!id) return;
+        const result = await dispatch(toggleWishlistProduct(id));
+        if (result?.authRequired) {
+            navigation.navigate("User", { screen: "Login" });
+            return;
+        }
+        if (!result?.ok) {
+            Toast.show({ topOffset: 60, type: "error", text1: result?.message || "Wishlist update failed" });
+        }
+    };
+
+    const goToWishlist = () => {
+        const tabNav = navigation.getParent?.();
+        if (tabNav) {
+            tabNav.navigate("User", { screen: "Wishlist" });
+            return;
+        }
+        navigation.navigate("User", { screen: "Wishlist" });
+    };
+
+    const goToCart = () => {
+        const tabNav = navigation.getParent?.();
+        if (isAdmin) {
+            if (tabNav) {
+                tabNav.navigate("Admin", { screen: "Dashboard" });
+                return;
+            }
+            navigation.navigate("Admin", { screen: "Dashboard" });
+            return;
+        }
+
+        if (tabNav) {
+            tabNav.navigate("Cart Screen");
+            return;
+        }
+        navigation.navigate("Cart Screen");
+    };
+
+    const renderCategoryCard = (entry) => {
+        const item = entry?.product || {};
+        return (
+            <TouchableOpacity
+                key={entry.id}
+                style={styles.categoryCard}
+                onPress={() => navigation.navigate("Catalog Search", {
+                    preselectedCategoryId: entry?.categoryId,
+                    preselectedCategoryName: entry?.categoryName,
+                })}
+                activeOpacity={0.9}
+            >
+                <Image source={{ uri: item?.image || FALLBACK_IMAGE }} style={styles.categoryImage} resizeMode="cover" />
+                <Text style={styles.categoryCardTitle} numberOfLines={1}>{entry?.categoryName || "Category"}</Text>
+                <Text style={styles.categoryCardDesc} numberOfLines={1}>{item?.name || "Product"}</Text>
+            </TouchableOpacity>
+        );
+    };
+
+    const renderProductCard = (item, index) => {
+        const productId = String(item?.id || item?._id || index);
+        const soldCount = Number(item?.soldCount || 0);
+        const rating = Number(item?.rating || 0);
+        const inStock = Number(item?.countInStock || 0);
+        const isWishlisted = wishlistIds.includes(productId);
+
+        return (
+            <TouchableOpacity
+                key={productId}
+                style={styles.productEchoLayer}
+                activeOpacity={0.92}
+                onPress={() => navigation.navigate("Product Detail", { item })}
+            >
+                <View style={styles.productCard}>
+                    <View style={styles.productTopLine}>
+                        <Ionicons name="cube-outline" size={14} color="#111" style={styles.productCategoryGhostIcon} />
+                        <Text style={styles.productCategoryText} numberOfLines={1}>{getCategoryName(item).toUpperCase()}</Text>
+                        {!isAdmin ? (
+                            <TouchableOpacity
+                                style={styles.productHeartBtn}
+                                onPress={(event) => {
+                                    event?.stopPropagation?.();
+                                    toggleWishlist(productId);
+                                }}
+                            >
+                                <Ionicons name={isWishlisted ? "heart" : "heart-outline"} size={16} color={isWishlisted ? "#d62027" : "#fff"} />
+                            </TouchableOpacity>
+                        ) : null}
+                    </View>
+
+                    <Image source={{ uri: item?.image || FALLBACK_IMAGE }} style={styles.productImage} resizeMode="cover" />
+
+                    <View style={styles.productNameRow}>
+                        <Text style={styles.productName} numberOfLines={1}>{item?.name || "Product"}</Text>
+                        {!isAdmin ? (
+                            <TouchableOpacity
+                                style={styles.productBagBtn}
+                                onPress={(event) => {
+                                    event?.stopPropagation?.();
+                                    dispatch(addToCart({ ...item, quantity: 1 }));
+                                    Toast.show({ topOffset: 60, type: "success", text1: `${item?.name || "Product"} added to Cart` });
+                                }}
+                            >
+                                <Ionicons name="bag-outline" size={14} color="#fff" />
+                            </TouchableOpacity>
+                        ) : null}
+                    </View>
+
+                    <Text style={styles.productDesc} numberOfLines={1}>{item?.description || "No description"}</Text>
+
+                    <View style={styles.ratingRow}>
+                        <Ionicons name="star" size={15} color="#111" />
+                        <Text style={styles.ratingValue}>{rating.toFixed(1)}</Text>
+                        <Text style={styles.soldValue}>({soldCount} Sold)</Text>
+                    </View>
+
+                    <View style={styles.productBottomRow}>
+                        <View style={styles.stockRow}>
+                            <Text style={styles.stockLabel}>Stock</Text>
+                            <Text style={styles.stockValue}>{inStock}</Text>
+                        </View>
+                        <Text style={styles.productPrice}>$ {Number(item?.price || 0).toFixed(2)}</Text>
+                    </View>
+                </View>
+            </TouchableOpacity>
+        );
+    };
 
     return (
         <View style={styles.container}>
-            {/* Header: menu (opens drawer), SnapShop, cart */}
             <View style={styles.header}>
                 <TouchableOpacity
                     onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
                     style={styles.menuBtn}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
-                    <Ionicons name="grid-outline" size={24} color="#000" />
+                    <Ionicons name="menu-outline" size={24} color="#000" />
                 </TouchableOpacity>
+
                 <Text style={styles.headerTitle}>SnapShop</Text>
-                <TouchableOpacity
-                    onPress={() => navigation.getParent()?.navigate("Cart Screen")}
-                    style={styles.cartBtn}
-                >
-                    <Ionicons name="bag-outline" size={24} color="#000" />
-                    <CartIcon />
-                </TouchableOpacity>
+
+                <View style={styles.headerRightIcons}>
+                    <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate("Catalog Search")}>
+                        <Ionicons name="search-outline" size={22} color="#000" />
+                    </TouchableOpacity>
+
+                    {!isAdmin ? (
+                        <TouchableOpacity style={styles.headerIconBtn} onPress={goToWishlist}>
+                            <Ionicons name="heart-outline" size={22} color="#000" />
+                        </TouchableOpacity>
+                    ) : null}
+
+                    <TouchableOpacity onPress={goToCart} style={styles.headerIconBtn}>
+                        <Ionicons name={isAdmin ? "settings-outline" : "bag-outline"} size={22} color="#000" />
+                        {!isAdmin ? <CartIcon /> : null}
+                    </TouchableOpacity>
+                </View>
             </View>
 
-            {focus ? (
-                <View style={styles.searchContainer}>
-                    <View style={styles.searchRow}>
-                        <Searchbar
-                            placeholder="Search"
-                            onChangeText={(text) => {
-                                onChangeSearch(text);
-                            }}
-                            value={keyword}
-                            onClearIconPress={onBlur}
-                            style={styles.searchbar}
-                        />
-                    </View>
-                    <View style={styles.brandsSection}>
-                        <CategoryFilter
-                            categories={categories}
-                            categoryFilter={changeCtg}
-                            productsCtg={productsCtg}
-                            active={active}
-                            setActive={setActive}
-                        />
-                    </View>
-                    {renderFilterPanel()}
-                    <SearchedProduct productsFiltered={productsFiltered} />
+            <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={styles.scrollContent}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            >
+                <View style={styles.carouselWrap}>
+                    <Swiper
+                        autoplay
+                        autoplayTimeout={5}
+                        showsButtons={false}
+                        showsPagination={false}
+                        loop
+                        style={styles.carouselSwiper}
+                    >
+                        {bannerData.map((image, idx) => (
+                            <Image key={idx} source={image} style={styles.carouselImage} resizeMode="cover" />
+                        ))}
+                    </Swiper>
                 </View>
-            ) : (
-                <ScrollView
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={styles.scrollContent}
-                >
-                    <Banner />
-                    <View style={styles.brandsSection}>
-                        <CategoryFilter
-                            categories={categories}
-                            categoryFilter={changeCtg}
-                            productsCtg={productsCtg}
-                            active={active}
-                            setActive={setActive}
-                        />
+
+                <View style={styles.sectionWrap}>
+                    <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionTitle}>Category</Text>
+                        <TouchableOpacity style={styles.viewAllBtn} onPress={() => navigation.navigate("Catalog Search") }>
+                            <Text style={styles.viewAllText}>View All</Text>
+                        </TouchableOpacity>
                     </View>
-                    {/* Search bar: full width, own row above products */}
-                    <View style={styles.searchRow}>
-                        <Searchbar
-                            placeholder="Search"
-                            onChangeText={(text) => {
-                                onChangeSearch(text);
-                                setFocus(true);
-                            }}
-                            value={keyword}
-                            onClearIconPress={onBlur}
-                            style={styles.searchbar}
-                        />
+                    <View style={styles.categoryGrid}>
+                        {categoryShowcase.length > 0 ? categoryShowcase.map(renderCategoryCard) : (
+                            <Text style={styles.emptyText}>No categories with products yet.</Text>
+                        )}
                     </View>
-                    {renderFilterPanel()}
-                    {productsCtg.length > 0 ? (
-                        <View style={styles.listContainer}>
-                            {productsCtg.map((item) => (
-                                <ProductList key={item.id || item._id} item={item} />
-                            ))}
+                </View>
+
+                <View style={styles.sectionDivider} />
+
+                <View style={styles.sectionWrap}>
+                    <View style={styles.sectionHeaderRow}>
+                        <Text style={styles.sectionTitle}>Products</Text>
+                        <TouchableOpacity style={styles.viewAllBtn} onPress={() => navigation.navigate("Catalog Search") }>
+                            <Text style={styles.viewAllText}>View All</Text>
+                        </TouchableOpacity>
+                    </View>
+                    {filteredProducts.length > 0 ? (
+                        <View style={styles.productsGrid}>
+                            {filteredProducts.map(renderProductCard)}
                         </View>
                     ) : (
-                        <View style={[styles.center, { height: height / 3 }]}>
-                            <Text>No products found</Text>
-                        </View>
+                        <Text style={styles.emptyText}>No products found.</Text>
                     )}
-                </ScrollView>
-            )}
+                </View>
+            </ScrollView>
         </View>
     );
 };
@@ -274,72 +319,255 @@ const styles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        paddingHorizontal: 16,
+        paddingHorizontal: 12,
         paddingTop: 48,
-        paddingBottom: 12,
+        paddingBottom: 10,
         backgroundColor: "#fff",
         borderBottomWidth: 1,
-        borderBottomColor: "#eee",
+        borderBottomColor: "#efefef",
     },
-    menuBtn: { padding: 4 },
+    menuBtn: {
+        width: 36,
+        alignItems: "flex-start",
+    },
     headerTitle: {
-        fontSize: 20,
-        fontWeight: "700",
+        fontSize: 22,
+        fontWeight: "800",
         color: "#000",
+        flex: 1,
+        textAlign: "center",
+        marginRight: 18,
     },
-    cartBtn: { padding: 4, position: "relative" },
-    scrollContent: { paddingBottom: 24 },
-    brandsSection: { backgroundColor: "#f2f2f2", paddingVertical: 8 },
-    searchContainer: { flex: 1 },
-    searchRow: {
-        paddingHorizontal: 12,
-        paddingVertical: 12,
-        backgroundColor: "#fff",
-    },
-    searchbar: { backgroundColor: "#f5f5f5", elevation: 0 },
-    filterPanel: {
-        marginHorizontal: 12,
-        marginTop: 8,
-        marginBottom: 4,
-        backgroundColor: "#fff",
-        borderRadius: 12,
-        padding: 12,
-    },
-    filterHeaderRow: {
+    headerRightIcons: {
         flexDirection: "row",
-        justifyContent: "space-between",
         alignItems: "center",
     },
-    filterTitle: {
-        fontSize: 15,
+    headerIconBtn: {
+        width: 30,
+        height: 30,
+        alignItems: "center",
+        justifyContent: "center",
+        marginLeft: 8,
+        position: "relative",
+    },
+    scrollContent: {
+        paddingBottom: 24,
+    },
+    carouselWrap: {
+        marginTop: 10,
+        width,
+        backgroundColor: "#fff",
+    },
+    carouselSwiper: {
+        height: 196,
+    },
+    carouselImage: {
+        width: "100%",
+        height: 196,
+    },
+    sectionWrap: {
+        marginTop: 14,
+        paddingHorizontal: 12,
+    },
+    sectionHeaderRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 10,
+    },
+    sectionTitle: {
+        fontSize: 21,
         fontWeight: "700",
         color: "#111",
+        fontFamily: Platform.select({ ios: "Georgia", android: "serif", default: "serif" }),
     },
-    resetBtn: {
-        backgroundColor: "#111",
-        borderRadius: 8,
-        paddingVertical: 5,
-        paddingHorizontal: 10,
+    viewAllBtn: {
+        paddingHorizontal: 2,
+        paddingVertical: 2,
     },
-    resetBtnText: {
-        color: "#fff",
+    viewAllText: {
         fontSize: 12,
-        fontWeight: "700",
-    },
-    priceText: {
-        color: "#333",
+        color: "#8c8c8c",
         fontWeight: "600",
-        marginTop: 4,
     },
-    listContainer: {
+    categoryGrid: {
         flexDirection: "row",
         flexWrap: "wrap",
-        paddingHorizontal: 8,
+        marginHorizontal: -2,
     },
-    center: {
+    categoryCard: {
+        width: (width - 24 - 16) / 3,
+        marginHorizontal: 2,
+        marginBottom: 8,
+        paddingHorizontal: 4,
+        alignItems: "center",
+    },
+    categoryImage: {
+        width: "100%",
+        aspectRatio: 1,
+        borderRadius: 0,
+        backgroundColor: "#f0f0f0",
+        marginBottom: 5,
+        borderWidth: 1,
+        borderColor: "#d9d9d9",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.16,
+        shadowRadius: 3,
+        elevation: 2,
+    },
+    categoryCardTitle: {
+        fontSize: 11,
+        fontWeight: "700",
+        color: "#111",
+        textAlign: "center",
+    },
+    categoryCardDesc: {
+        fontSize: 10,
+        color: "#666",
+        marginTop: 1,
+        fontStyle: "italic",
+        textAlign: "center",
+    },
+    productsGrid: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        justifyContent: "space-between",
+    },
+    productEchoLayer: {
+        width: (width - 24 - 12) / 2,
+        marginBottom: 14,
+        borderRadius: 19,
+        backgroundColor: "rgba(115,115,115,0.35)",
+        paddingRight: 6,
+        paddingBottom: 6,
+        shadowColor: "#000",
+        shadowOffset: { width: 3, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    productCard: {
+        backgroundColor: "#fff",
+        borderRadius: 18,
+        borderWidth: 1,
+        borderColor: "#cfcfcf",
+        padding: 9,
+        minHeight: 226,
+    },
+    productTopLine: {
+        flexDirection: "row",
         justifyContent: "center",
         alignItems: "center",
+        minHeight: 22,
+        position: "relative",
+    },
+    productCategoryGhostIcon: {
+        position: "absolute",
+        left: 0,
+        opacity: 0.28,
+    },
+    productCategoryText: {
+        fontSize: 10,
+        color: "#111",
+        textAlign: "center",
+        flex: 1,
+    },
+    productHeartBtn: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: "#0e0e0e",
+        alignItems: "center",
+        justifyContent: "center",
+        position: "absolute",
+        right: 0,
+        top: -1,
+    },
+    productImage: {
         width: "100%",
+        height: 72,
+        borderRadius: 10,
+        marginTop: 6,
+        backgroundColor: "#f2f2f2",
+    },
+    productNameRow: {
+        marginTop: 8,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+    },
+    productName: {
+        flex: 1,
+        fontSize: 15,
+        fontWeight: "800",
+        color: "#111",
+        marginRight: 8,
+    },
+    productBagBtn: {
+        width: 26,
+        height: 26,
+        borderRadius: 8,
+        backgroundColor: "#0c0c0c",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    productDesc: {
+        marginTop: 2,
+        fontSize: 10,
+        color: "#3a3a3a",
+    },
+    ratingRow: {
+        marginTop: 6,
+        flexDirection: "row",
+        alignItems: "center",
+    },
+    ratingValue: {
+        marginLeft: 6,
+        fontSize: 10,
+        fontWeight: "800",
+        color: "#111",
+    },
+    soldValue: {
+        marginLeft: 5,
+        fontSize: 10,
+        color: "#2f2f2f",
+    },
+    productBottomRow: {
+        marginTop: 8,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+    },
+    stockRow: {
+        flexDirection: "row",
+        alignItems: "center",
+    },
+    stockLabel: {
+        fontSize: 12,
+        fontWeight: "800",
+        color: "#111",
+    },
+    stockValue: {
+        fontSize: 12,
+        color: "#111",
+        marginLeft: 4,
+    },
+    productPrice: {
+        fontSize: 15,
+        fontWeight: "800",
+        color: "#111",
+    },
+    emptyText: {
+        color: "#666",
+        fontSize: 13,
+        paddingVertical: 6,
+    },
+    sectionDivider: {
+        marginHorizontal: 12,
+        marginTop: 2,
+        borderBottomWidth: 1,
+        borderBottomColor: "rgba(0,0,0,0.08)",
     },
 });
 

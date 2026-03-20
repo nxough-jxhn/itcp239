@@ -11,12 +11,15 @@ import {
     ORDER_DETAIL_FAIL,
 } from "../constants";
 
+const REQUEST_TIMEOUT_MS = 8000;
+
 export const fetchOrders = () => async (dispatch) => {
     try {
         dispatch({ type: ORDERS_REQUEST });
         const token = (await getJwtToken()) || "";
         const response = await axios.get(`${baseURL}orders`, {
             headers: { Authorization: `Bearer ${token}` },
+            timeout: REQUEST_TIMEOUT_MS,
         });
         dispatch({ type: ORDERS_SUCCESS, payload: response.data || [] });
     } catch (error) {
@@ -30,6 +33,7 @@ export const fetchOrderById = (orderId) => async (dispatch) => {
         const token = (await getJwtToken()) || "";
         const response = await axios.get(`${baseURL}orders/${orderId}`, {
             headers: { Authorization: `Bearer ${token}` },
+            timeout: REQUEST_TIMEOUT_MS,
         });
         dispatch({ type: ORDER_DETAIL_SUCCESS, payload: response.data || {}, orderId });
     } catch (error) {

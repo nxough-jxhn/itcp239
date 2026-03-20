@@ -1,7 +1,5 @@
 import React, { useEffect, useState, useContext } from "react";
-import { Text, View, Button } from "react-native";
-import FormContainer from "../../Shared/FormContainer";
-import Input from "../../Shared/Input";
+import { Text, View, TouchableOpacity, StyleSheet } from "react-native";
 import { KeyboardAwareScrollView } from "react-native-keyboard-aware-scroll-view";
 import { useSelector } from "react-redux";
 import { useNavigation } from "@react-navigation/native";
@@ -104,31 +102,178 @@ const Checkout = () => {
         }
 
         navigation.navigate("Payment", {
-            order: { city, country, dateOrdered: Date.now(), orderItems, phone, shippingAddress1: address, shippingAddress2: address2, status: "pending", user, zip },
+            order: {
+                city,
+                country,
+                dateOrdered: Date.now(),
+                orderItems,
+                phone,
+                shippingAddress1: address,
+                shippingAddress2: address2,
+                status: "pending",
+                user,
+                zip,
+            },
         });
     };
 
     return (
-        <KeyboardAwareScrollView viewIsInsideTabBar extraHeight={200} enableOnAndroid style={{backgroundColor: "#f5f5f5"}}>
-            <FormContainer title="Shipping Address">
-                <Input label="Phone" placeholder="Phone (from profile)" value={phone} keyboardType="numeric" editable={false} />
-                <Input label="Address Line 1" placeholder="Shipping Address 1 (from profile)" value={address} editable={false} />
-                <Input label="Address Line 2" placeholder="Shipping Address 2 (from profile)" value={address2} editable={false} />
-                <Input label="City" placeholder="City (from profile)" value={city} editable={false} />
-                <Input label="Zip Code" placeholder="Zip Code (from profile)" value={zip} keyboardType="numeric" editable={false} />
-                <Input label="Country" placeholder="Country (from profile)" value={country} editable={false} />
-                <View style={{ width: "80%", alignItems: "center", marginTop: 20 }}>
-                    <Button title={profileReady ? "Confirm" : "Complete Profile First"} onPress={checkOut} />
+        <KeyboardAwareScrollView viewIsInsideTabBar extraHeight={180} enableOnAndroid style={styles.page} contentContainerStyle={styles.content}>
+            <View style={styles.sectionCard}>
+                <View style={styles.sectionHeaderRow}>
+                    <Text style={styles.sectionTitle}>Address Details</Text>
+                    <TouchableOpacity onPress={() => navigation.navigate("User", { screen: "User Profile" })}>
+                        <Text style={styles.changeText}>Change</Text>
+                    </TouchableOpacity>
                 </View>
-                <View style={{ width: "80%", alignItems: "center", marginTop: 12 }}>
-                    <Button
-                        title="Go to User Profile"
-                        onPress={() => navigation.navigate("User", { screen: "User Profile" })}
-                    />
+
+                <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>Address Line 1</Text>
+                    <Text style={styles.fieldValue}>{address || "Not set"}</Text>
                 </View>
-            </FormContainer>
+                {String(address2 || "").trim() ? (
+                    <View style={styles.fieldRow}>
+                        <Text style={styles.fieldLabel}>Address Line 2</Text>
+                        <Text style={styles.fieldValue}>{address2}</Text>
+                    </View>
+                ) : null}
+                <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>City</Text>
+                    <Text style={styles.fieldValue}>{city || "Not set"}</Text>
+                </View>
+                <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>Zip Code</Text>
+                    <Text style={styles.fieldValue}>{zip || "Not set"}</Text>
+                </View>
+                <View style={styles.fieldRow}>
+                    <Text style={styles.fieldLabel}>Country</Text>
+                    <Text style={styles.fieldValue}>{country || "Not set"}</Text>
+                </View>
+                <View style={styles.fieldRowLast}>
+                    <Text style={styles.fieldLabel}>Phone</Text>
+                    <Text style={styles.fieldValue}>{phone || "Not set"}</Text>
+                </View>
+
+                {!profileReady ? (
+                    <View style={styles.warningBox}>
+                        <Text style={styles.warningText}>Complete your profile details before continuing.</Text>
+                    </View>
+                ) : null}
+            </View>
+
+            <TouchableOpacity
+                style={[styles.primaryBtn, !profileReady && styles.primaryBtnDisabled]}
+                onPress={checkOut}
+                disabled={!profileReady}
+            >
+                <Text style={styles.primaryBtnText}>{loadingProfile ? "Loading..." : "Continue to Payment"}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+                style={styles.secondaryBtn}
+                onPress={() => navigation.navigate("User", { screen: "User Profile" })}
+            >
+                <Text style={styles.secondaryBtnText}>Go to User Profile</Text>
+            </TouchableOpacity>
         </KeyboardAwareScrollView>
     );
 };
+
+const styles = StyleSheet.create({
+    page: {
+        backgroundColor: "#f5f5f5",
+    },
+    content: {
+        paddingHorizontal: 14,
+        paddingTop: 8,
+        paddingBottom: 26,
+    },
+    sectionCard: {
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#ececec",
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+    },
+    sectionHeaderRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 8,
+    },
+    sectionTitle: {
+        color: "#333",
+        fontSize: 17,
+        fontWeight: "700",
+    },
+    changeText: {
+        color: "#555",
+        fontWeight: "700",
+    },
+    fieldRow: {
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: "#f1f1f1",
+    },
+    fieldRowLast: {
+        paddingVertical: 8,
+    },
+    fieldLabel: {
+        color: "#8a8a8a",
+        fontSize: 12,
+        marginBottom: 2,
+    },
+    fieldValue: {
+        color: "#222",
+        fontWeight: "700",
+        fontSize: 14,
+    },
+    warningBox: {
+        marginTop: 8,
+        backgroundColor: "#fff2f2",
+        borderWidth: 1,
+        borderColor: "#ffd3d3",
+        borderRadius: 10,
+        paddingVertical: 8,
+        paddingHorizontal: 10,
+    },
+    warningText: {
+        color: "#ac2a2a",
+        fontWeight: "600",
+        fontSize: 12,
+    },
+    primaryBtn: {
+        marginTop: 16,
+        height: 50,
+        borderRadius: 12,
+        backgroundColor: "#0d0d0d",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    primaryBtnDisabled: {
+        backgroundColor: "#9c9c9c",
+    },
+    primaryBtnText: {
+        color: "#fff",
+        fontWeight: "800",
+        fontSize: 16,
+    },
+    secondaryBtn: {
+        marginTop: 10,
+        height: 48,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#d7d7d7",
+        backgroundColor: "#fff",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    secondaryBtnText: {
+        color: "#444",
+        fontWeight: "700",
+        fontSize: 14,
+    },
+});
 
 export default Checkout;

@@ -28,9 +28,15 @@ const Login = () => {
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    const isValidEmail = (value) => /^\S+@\S+\.\S+$/.test(String(value || "").trim());
+
     const handleSubmit = () => {
         if (email === "" || password === "") {
             setError("Please fill in your credentials");
+            return;
+        }
+        if (!isValidEmail(email)) {
+            setError("Please enter a valid email address");
             return;
         }
         setError("");
@@ -129,8 +135,8 @@ const styles = StyleSheet.create({
         paddingBottom: 40,
     },
     logoBox: {
-        width: 72,
-        height: 72,
+        width: 64,
+        height: 64,
         borderRadius: 16,
         backgroundColor: "#000",
         alignItems: "center",
@@ -139,14 +145,14 @@ const styles = StyleSheet.create({
         marginBottom: 12,
     },
     brandName: {
-        fontSize: 24,
+        fontSize: 21,
         fontWeight: "700",
         color: "#000",
         textAlign: "center",
         marginBottom: 24,
     },
     title: {
-        fontSize: 28,
+        fontSize: 24,
         fontWeight: "700",
         color: "#000",
         marginBottom: 8,
@@ -162,7 +168,12 @@ const styles = StyleSheet.create({
         fontSize: 14,
         marginVertical: 20,
     },
-    form: { marginTop: 8 },
+    form: {
+        marginTop: 8,
+        width: "100%",
+        maxWidth: 420,
+        alignSelf: "center",
+    },
     forgetLink: { alignSelf: "flex-end", marginBottom: 16 },
     forgetText: { fontSize: 14, color: "#000", fontWeight: "600" },
     errorText: {
@@ -172,7 +183,7 @@ const styles = StyleSheet.create({
     },
     loader: { marginVertical: 12 },
     primaryBtn: {
-        height: 52,
+        height: 48,
         backgroundColor: "#000",
         borderRadius: 12,
         alignItems: "center",
@@ -181,7 +192,7 @@ const styles = StyleSheet.create({
     },
     primaryBtnText: {
         color: "#fff",
-        fontSize: 17,
+        fontSize: 15,
         fontWeight: "600",
     },
     footer: {

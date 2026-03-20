@@ -8,12 +8,14 @@ import cartItems from './Reducers/cartItems';
 import products from './Reducers/products';
 import orders from './Reducers/orders';
 import reviews from './Reducers/reviews';
+import wishlist from './Reducers/wishlist';
 
 const reducers = combineReducers({
     cartItems: cartItems,
     products: products,
     orders: orders,
     reviews: reviews,
+    wishlist: wishlist,
 });
 
 const store = createStore(reducers, applyMiddleware(thunk));

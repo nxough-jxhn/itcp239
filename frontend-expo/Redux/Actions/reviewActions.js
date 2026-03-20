@@ -6,6 +6,8 @@ import {
     REVIEWS_FAIL,
 } from "../constants";
 
+const REQUEST_TIMEOUT_MS = 8000;
+
 export const fetchReviewsByProduct = ({ productId, sort = "date_desc", rating = 0, withMedia = false }) => async (dispatch) => {
     if (!productId) return;
 
@@ -14,7 +16,10 @@ export const fetchReviewsByProduct = ({ productId, sort = "date_desc", rating = 
         const params = { sort, withMedia };
         if (Number(rating) > 0) params.rating = Number(rating);
 
-        const response = await axios.get(`${baseURL}products/${productId}/reviews`, { params });
+        const response = await axios.get(`${baseURL}products/${productId}/reviews`, {
+            params,
+            timeout: REQUEST_TIMEOUT_MS,
+        });
         dispatch({
             type: REVIEWS_SUCCESS,
             payload: Array.isArray(response.data) ? response.data : [],

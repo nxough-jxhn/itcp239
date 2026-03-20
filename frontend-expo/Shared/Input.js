@@ -46,7 +46,7 @@ const Input = (props) => {
 
 const styles = StyleSheet.create({
     wrapper: {
-        width: "88%",
+        width: "100%",
         marginBottom: 14,
     },
     label: {

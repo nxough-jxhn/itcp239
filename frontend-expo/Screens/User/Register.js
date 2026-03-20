@@ -36,6 +36,10 @@ const Register = () => {
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    const isValidEmail = (value) => /^\S+@\S+\.\S+$/.test(String(value || "").trim());
+    const sanitizePhone = (value) => String(value || "").replace(/\D/g, "");
+    const isValidPhone = (value) => /^\d{10,15}$/.test(String(value || ""));
+
     const pickFromGallery = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ["images"],
@@ -72,6 +76,18 @@ const Register = () => {
         }
         if (password.length < 6) {
             setError("Password must be at least 6 characters");
+            return;
+        }
+        if (name.trim().length < 2) {
+            setError("Name must be at least 2 characters");
+            return;
+        }
+        if (!isValidEmail(email)) {
+            setError("Please enter a valid email address");
+            return;
+        }
+        if (!isValidPhone(phone)) {
+            setError("Phone number must contain 10 to 15 digits");
             return;
         }
         setError("");
@@ -167,8 +183,9 @@ const Register = () => {
                     <Input
                         placeholder="Phone"
                         value={phone}
-                        onChangeText={setPhone}
+                        onChangeText={(value) => setPhone(sanitizePhone(value))}
                         keyboardType="phone-pad"
+                        maxLength={15}
                     />
                     <Input
                         placeholder="Password"
@@ -233,7 +250,7 @@ const styles = StyleSheet.create({
         paddingBottom: 40,
     },
     title: {
-        fontSize: 28,
+        fontSize: 24,
         fontWeight: "700",
         color: "#000",
         marginBottom: 12,
@@ -245,15 +262,20 @@ const styles = StyleSheet.create({
         textAlign: "center",
         marginBottom: 28,
     },
-    form: { marginBottom: 24 },
+    form: {
+        marginBottom: 24,
+        width: "100%",
+        maxWidth: 420,
+        alignSelf: "center",
+    },
     imagePickerWrap: {
         alignItems: "center",
         marginBottom: 18,
     },
     avatar: {
-        width: 92,
-        height: 92,
-        borderRadius: 46,
+        width: 84,
+        height: 84,
+        borderRadius: 42,
         backgroundColor: "#ddd",
         marginBottom: 10,
     },
@@ -281,7 +303,7 @@ const styles = StyleSheet.create({
     },
     loader: { marginVertical: 12 },
     primaryBtn: {
-        height: 52,
+        height: 48,
         backgroundColor: "#000",
         borderRadius: 12,
         alignItems: "center",
@@ -290,7 +312,7 @@ const styles = StyleSheet.create({
     },
     primaryBtnText: {
         color: "#fff",
-        fontSize: 17,
+        fontSize: 15,
         fontWeight: "600",
     },
     divider: {

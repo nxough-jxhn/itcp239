@@ -70,7 +70,7 @@ const OnboardingScreen = ({ navigation }) => {
                         <View style={styles.iconWrap}>
                             <Ionicons
                                 name={slide.icon}
-                                size={80}
+                                size={66}
                                 color="#333"
                             />
                         </View>
@@ -104,7 +104,7 @@ const styles = StyleSheet.create({
         right: 20,
         zIndex: 10,
     },
-    skipText: { fontSize: 16, color: "#666", fontWeight: "600" },
+    skipText: { fontSize: 14, color: "#666", fontWeight: "600" },
     slide: {
         flex: 1,
         alignItems: "center",
@@ -112,20 +112,20 @@ const styles = StyleSheet.create({
         paddingHorizontal: 24,
     },
     iconWrap: {
-        width: 140,
-        height: 140,
-        borderRadius: 70,
+        width: 120,
+        height: 120,
+        borderRadius: 60,
         backgroundColor: "#f5f5f5",
         alignItems: "center",
         justifyContent: "center",
-        marginBottom: 32,
+        marginBottom: 24,
     },
     title: {
-        fontSize: 26,
+        fontSize: 22,
         fontWeight: "700",
         color: "#000",
         textAlign: "center",
-        lineHeight: 34,
+        lineHeight: 30,
     },
     subtitle: {
         fontSize: 15,
@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
         bottom: 50,
         left: 24,
         right: 24,
-        height: 52,
+        height: 48,
         backgroundColor: "#000",
         borderRadius: 12,
         alignItems: "center",
@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
     },
     primaryBtnText: {
         color: "#fff",
-        fontSize: 17,
+        fontSize: 15,
         fontWeight: "600",
     },
 });

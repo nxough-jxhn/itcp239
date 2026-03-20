@@ -1,5 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import AppPageHeader from "../../Shared/AppPageHeader";
 
 const NotificationDetail = ({ route }) => {
     const notification = route?.params?.notification || {};
@@ -12,6 +13,8 @@ const NotificationDetail = ({ route }) => {
 
     return (
         <View style={styles.container}>
+            <AppPageHeader />
+            <View style={styles.content}>
             <Text style={styles.title}>{title}</Text>
             <Text style={styles.date}>
                 {date.toLocaleDateString()} {date.toLocaleTimeString()}
@@ -28,6 +31,7 @@ const NotificationDetail = ({ route }) => {
                     ))}
                 </View>
             ) : null}
+            </View>
         </View>
     );
 };
@@ -36,10 +40,12 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: "#f5f5f5",
+    },
+    content: {
         padding: 16,
     },
     title: {
-        fontSize: 22,
+        fontSize: 18,
         fontWeight: "700",
         color: "#111",
         marginBottom: 8,
@@ -50,9 +56,9 @@ const styles = StyleSheet.create({
         marginBottom: 14,
     },
     body: {
-        fontSize: 15,
+        fontSize: 14,
         color: "#222",
-        lineHeight: 22,
+        lineHeight: 20,
     },
     metaBox: {
         marginTop: 16,

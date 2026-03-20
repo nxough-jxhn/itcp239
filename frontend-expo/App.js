@@ -194,7 +194,7 @@ function AppInner() {
         notification: {
           title: content.title || 'Notification',
           body: content.body || '',
-          date: response.notification?.date || new Date().toISOString(),
+          date: new Date(response.notification?.date || Date.now()).toISOString(),
           data,
         },
       };

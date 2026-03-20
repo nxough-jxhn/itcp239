@@ -3,6 +3,7 @@ import { createStackNavigator } from "@react-navigation/stack";
 import ProductContainer from "../Screens/Product/ProductContainer";
 import SingleProduct from "../Screens/Product/SingleProduct";
 import LeaveReview from "../Screens/Product/LeaveReview";
+import CatalogSearch from "../Screens/Product/CatalogSearch";
 
 const Stack = createStackNavigator();
 
@@ -18,6 +19,11 @@ function MyStack() {
                 name="Product Detail"
                 component={SingleProduct}
                 options={{ headerShown: true }}
+            />
+            <Stack.Screen
+                name="Catalog Search"
+                component={CatalogSearch}
+                options={{ headerShown: false }}
             />
             <Stack.Screen
                 name="Leave Review"

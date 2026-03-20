@@ -143,7 +143,7 @@ export default function SocialLoginButtons({ dispatch, variant }) {
 }
 
 const styles = StyleSheet.create({
-  socialSection: { marginBottom: 0 },
+  socialSection: { marginBottom: 0, width: '100%' },
   socialButtons: { flexDirection: 'column', gap: 12 },
   socialButton: {
     flexDirection: 'row',

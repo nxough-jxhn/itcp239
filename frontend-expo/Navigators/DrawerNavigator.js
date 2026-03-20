@@ -9,10 +9,10 @@ const DrawerNavigator = () => {
     return (
         <NativeDrawer.Navigator
             screenOptions={{
-                drawerStyle: { width: "50%" },
+                drawerStyle: { width: "70%", backgroundColor: "#fff", borderRightWidth: 1, borderRightColor: "#eaeaea" },
                 headerShown: false,          // hide default header
             }}
-            drawerContent={() => <DrawerContent />}
+            drawerContent={(props) => <DrawerContent {...props} />}
         >
             <NativeDrawer.Screen name="PeakPlay" component={Main} />
         </NativeDrawer.Navigator>

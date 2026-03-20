@@ -6,6 +6,15 @@ const User = require("../models/User");
 
 let firebaseInitialized = false;
 
+function normalizeDataPayload(data = {}) {
+  const normalized = {};
+  Object.entries(data || {}).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    normalized[String(key)] = String(value);
+  });
+  return normalized;
+}
+
 async function clearStaleTokens(tokens = []) {
   const uniqueTokens = [...new Set((tokens || []).filter(Boolean))];
   if (uniqueTokens.length === 0) return;
@@ -47,10 +56,12 @@ async function sendFCM(tokens, title, body, data) {
   initFirebase();
   if (!firebaseInitialized || tokens.length === 0) return;
 
+  const normalizedData = normalizeDataPayload(data);
+
   const message = {
     tokens,
     notification: { title: title || "", body: body || "" },
-    data: data || {},
+    data: normalizedData,
     android: {
       priority: "high",
       notification: {
@@ -83,12 +94,16 @@ async function sendFCM(tokens, title, body, data) {
 async function sendExpo(tokens, title, body, data) {
   if (tokens.length === 0) return;
 
+  const normalizedData = normalizeDataPayload(data);
+
   const messages = tokens.map((token) => ({
     to: token,
     sound: "default",
+    priority: "high",
+    channelId: "default",
     title: title || "",
     body: body || "",
-    data: data || {},
+    data: normalizedData,
   }));
 
   try {

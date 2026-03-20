@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Image, StyleSheet, Dimensions, View, ScrollView } from "react-native";
+import { Image, StyleSheet, Dimensions, View } from "react-native";
 import Swiper from "react-native-swiper";
 
 var { width } = Dimensions.get("window");
@@ -23,46 +23,41 @@ const Banner = () => {
     }, []);
 
     return (
-        <ScrollView>
-            <View style={styles.container}>
-                <View style={styles.swiper}>
-                    <Swiper
-                        style={{ height: width / 2 }}
-                        showButtons={false}
-                        autoplay={true}
-                        autoplayTimeout={3}
-                    >
-                        {bannerData.map((item, index) => (
-                            <Image
-                                key={index}
-                                style={styles.imageBanner}
-                                resizeMode="contain"
-                                source={item}
-                            />
-                        ))}
-                    </Swiper>
-                    <View style={{ height: 20 }} />
-                </View>
+        <View style={styles.container}>
+            <View style={styles.swiper}>
+                <Swiper
+                    style={{ height: width / 2 }}
+                    showButtons={false}
+                    autoplay={true}
+                    autoplayTimeout={3}
+                >
+                    {bannerData.map((item, index) => (
+                        <Image
+                            key={index}
+                            style={styles.imageBanner}
+                            resizeMode="cover"
+                            source={item}
+                        />
+                    ))}
+                </Swiper>
+                <View style={{ height: 12 }} />
             </View>
-        </ScrollView>
+        </View>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
-        flex: 1,
-        backgroundColor: "gainsboro",
+        backgroundColor: "#fafafa",
     },
     swiper: {
         width: width,
         alignItems: "center",
-        marginTop: 10,
+        marginTop: 4,
     },
     imageBanner: {
         height: width / 2,
-        width: width - 40,
-        borderRadius: 10,
-        marginHorizontal: 20,
+        width: width,
     },
 });
 

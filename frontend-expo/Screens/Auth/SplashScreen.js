@@ -22,7 +22,7 @@ const SplashScreen = ({ navigation }) => {
     return (
         <View style={styles.container}>
             <View style={styles.logoBox}>
-                <Ionicons name="bag-handle-outline" size={56} color="#fff" />
+                <Ionicons name="bag-handle-outline" size={48} color="#fff" />
             </View>
             <Text style={styles.brandName}>SnapShop</Text>
         </View>
@@ -37,8 +37,8 @@ const styles = StyleSheet.create({
         justifyContent: "center",
     },
     logoBox: {
-        width: 88,
-        height: 88,
+        width: 76,
+        height: 76,
         borderRadius: 20,
         backgroundColor: "#000",
         alignItems: "center",
@@ -46,7 +46,7 @@ const styles = StyleSheet.create({
         marginBottom: 16,
     },
     brandName: {
-        fontSize: 28,
+        fontSize: 24,
         fontWeight: "700",
         color: "#000",
     },

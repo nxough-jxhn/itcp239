@@ -5,10 +5,16 @@ const multer = require("multer");
 const authJwt = require("../middleware/authJwt");
 const mongoose = require("mongoose");
 const Product = require("../models/Product");
+const Wishlist = require("../models/Wishlist");
 const Order = require("../models/Order");
 const Review = require("../models/Review");
 const StockAlert = require("../models/StockAlert");
 const User = require("../models/User");
+const {
+  calculateDiscountedPrice,
+  loadActivePromosForProducts,
+  buildPromoMap,
+} = require("../services/promoPricing");
 const { sendToTokens } = require("../services/notifications");
 const { sanitizeProfanity } = require("../services/profanityFilter");
 const config = require("../config");
@@ -50,6 +56,100 @@ async function notifyAdmins(title, body) {
   } catch (error) {
     console.error('[notifyAdmins] Error:', error.message);
   }
+}
+
+function toMoney(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+async function notifyWishlistUsers(productId, title, body, extraData = {}) {
+  const activeWishlistRows = await Wishlist.find({
+    product: productId,
+    isActive: true,
+  }).lean();
+
+  if (activeWishlistRows.length === 0) return { sent: 0 };
+
+  const userIds = [...new Set(activeWishlistRows.map((row) => row.user?.toString()).filter(Boolean))];
+  if (userIds.length === 0) return { sent: 0 };
+
+  const users = await User.find(
+    { _id: { $in: userIds }, pushToken: { $ne: "" } },
+    "pushToken pushTokenType"
+  ).lean();
+
+  const tokens = users
+    .filter((user) => user.pushToken)
+    .map((user) => ({ token: user.pushToken, type: user.pushTokenType || "fcm" }));
+
+  if (tokens.length === 0) return { sent: 0 };
+
+  await sendToTokens(tokens, {
+    title,
+    body,
+    data: {
+      route: "notifications",
+      type: "wishlist",
+      productId: productId?.toString?.() || "",
+      ...extraData,
+    },
+  });
+
+  return { sent: tokens.length };
+}
+
+async function handleWishlistSignalsOnProductUpdate(beforeProduct, afterProduct) {
+  if (!beforeProduct || !afterProduct) return;
+
+  const priceBefore = Number(beforeProduct.price || 0);
+  const priceAfter = Number(afterProduct.price || 0);
+  const stockBefore = Number(beforeProduct.countInStock || 0);
+  const stockAfter = Number(afterProduct.countInStock || 0);
+
+  if (priceAfter > 0 && priceAfter < priceBefore) {
+    await notifyWishlistUsers(
+      afterProduct._id,
+      "Price drop on your wishlist",
+      `${afterProduct.name} is now $${toMoney(priceAfter).toFixed(2)} (was $${toMoney(priceBefore).toFixed(2)}).`,
+      { signal: "price_drop", oldPrice: toMoney(priceBefore), newPrice: toMoney(priceAfter) }
+    );
+  }
+
+  if (stockBefore <= 0 && stockAfter > 0) {
+    await notifyWishlistUsers(
+      afterProduct._id,
+      "Back in stock",
+      `${afterProduct.name} is back in stock.`,
+      { signal: "back_in_stock" }
+    );
+  }
+}
+
+async function handleWishlistSignalsOnProductDelete(deletedProduct) {
+  if (!deletedProduct?._id) return;
+
+  await notifyWishlistUsers(
+    deletedProduct._id,
+    "Wishlist product removed",
+    `${deletedProduct.name || "A wishlisted product"} is no longer available.`,
+    { signal: "product_removed" }
+  );
+
+  await Wishlist.updateMany(
+    { product: deletedProduct._id, isActive: true },
+    {
+      $set: {
+        isActive: false,
+        removedReason: "product_deleted",
+        removedAt: new Date(),
+        lastKnown: {
+          name: String(deletedProduct.name || ""),
+          image: String(deletedProduct.image || ""),
+          price: Number(deletedProduct.price || 0),
+        },
+      },
+    }
+  );
 }
 
 async function updateStockAlerts(product) {
@@ -148,6 +248,121 @@ function toObjectIdOrNull(value) {
   return new mongoose.Types.ObjectId(value);
 }
 
+async function attachActivePromoPricing(products) {
+  const list = Array.isArray(products) ? products : [products];
+  const validItems = list.filter(Boolean);
+  if (validItems.length === 0) return Array.isArray(products) ? [] : null;
+
+  const productIds = validItems.map((p) => p._id?.toString?.() || p.id).filter(Boolean);
+  const promos = await loadActivePromosForProducts(productIds);
+  const promoMap = buildPromoMap(productIds, promos);
+
+  const mapped = validItems.map((product) => {
+    const plain = typeof product.toObject === "function" ? product.toObject() : product;
+    const productId = plain._id?.toString?.() || plain.id;
+    const chosenPromo = promoMap.get(productId);
+
+    if (!chosenPromo) {
+      return {
+        ...plain,
+        discountedPrice: Number(plain.price) || 0,
+        discountAmount: 0,
+        hasActiveDiscount: false,
+        activePromo: null,
+      };
+    }
+
+    const pricing = calculateDiscountedPrice(
+      Number(plain.price) || 0,
+      chosenPromo.discountType,
+      chosenPromo.discountValue
+    );
+
+    return {
+      ...plain,
+      discountedPrice: pricing.discountedPrice,
+      discountAmount: pricing.discountAmount,
+      hasActiveDiscount: pricing.discountAmount > 0,
+      activePromo: {
+        id: chosenPromo._id?.toString?.() || chosenPromo.id,
+        name: chosenPromo.name,
+        description: chosenPromo.description,
+        discountType: chosenPromo.discountType,
+        discountValue: chosenPromo.discountValue,
+        startAt: chosenPromo.startAt,
+        endAt: chosenPromo.endAt,
+      },
+    };
+  });
+
+  return Array.isArray(products) ? mapped : mapped[0];
+}
+
+async function loadSoldCountsForProductIds(productIds) {
+  const ids = (Array.isArray(productIds) ? productIds : [productIds])
+    .map((id) => {
+      if (!id) return null;
+      const raw = id.toString ? id.toString() : String(id);
+      return mongoose.Types.ObjectId.isValid(raw) ? new mongoose.Types.ObjectId(raw) : null;
+    })
+    .filter(Boolean);
+
+  if (ids.length === 0) return new Map();
+
+  const soldRows = await Order.aggregate([
+    {
+      $match: {
+        status: { $ne: "cancelled" },
+        "orderItems.product": { $in: ids },
+      },
+    },
+    { $unwind: "$orderItems" },
+    {
+      $match: {
+        "orderItems.product": { $in: ids },
+      },
+    },
+    {
+      $group: {
+        _id: "$orderItems.product",
+        soldCount: { $sum: { $ifNull: ["$orderItems.quantity", 0] } },
+      },
+    },
+  ]);
+
+  const soldMap = new Map();
+  soldRows.forEach((row) => {
+    soldMap.set(String(row._id), Number(row.soldCount || 0));
+  });
+  return soldMap;
+}
+
+async function attachSoldCounts(products) {
+  const list = Array.isArray(products) ? products : [products];
+  const validItems = list.filter(Boolean);
+  if (validItems.length === 0) return Array.isArray(products) ? [] : null;
+
+  const productIds = validItems
+    .map((product) => {
+      const plain = typeof product.toObject === "function" ? product.toObject() : product;
+      return plain._id?.toString?.() || plain.id;
+    })
+    .filter(Boolean);
+
+  const soldMap = await loadSoldCountsForProductIds(productIds);
+
+  const mapped = validItems.map((product) => {
+    const plain = typeof product.toObject === "function" ? product.toObject() : product;
+    const productId = plain._id?.toString?.() || plain.id;
+    return {
+      ...plain,
+      soldCount: Number(soldMap.get(String(productId)) || 0),
+    };
+  });
+
+  return Array.isArray(products) ? mapped : mapped[0];
+}
+
 function getReviewSort(sortKey) {
   const key = String(sortKey || "date_desc").toLowerCase();
   if (key === "date_asc") return { createdAt: 1 };
@@ -160,7 +375,9 @@ function getReviewSort(sortKey) {
 router.get("/", async (_req, res) => {
   try {
     const products = await Product.find().populate("category", "id name color");
-    return res.status(200).json(products);
+    const withPromos = await attachActivePromoPricing(products);
+    const withSoldCounts = await attachSoldCounts(withPromos);
+    return res.status(200).json(withSoldCounts);
   } catch (_error) {
     return res.status(500).json({ message: "Failed to load products" });
   }
@@ -171,7 +388,9 @@ router.get("/:id", async (req, res) => {
   try {
     const product = await Product.findById(req.params.id).populate("category", "id name color");
     if (!product) return res.status(404).json({ message: "Product not found" });
-    return res.status(200).json(product);
+    const withPromo = await attachActivePromoPricing(product);
+    const withSoldCount = await attachSoldCounts(withPromo);
+    return res.status(200).json(withSoldCount);
   } catch (_error) {
     return res.status(500).json({ message: "Failed to load product" });
   }
@@ -409,6 +628,7 @@ router.put("/:id", authJwt, upload.single("image"), async (req, res) => {
     ).populate("category", "id name color");
 
     await updateStockAlerts(updated);
+    await handleWishlistSignalsOnProductUpdate(existing, updated);
 
     return res.status(200).json(updated);
   } catch (error) {
@@ -425,6 +645,7 @@ router.delete("/:id", authJwt, async (req, res) => {
     }
     const deleted = await Product.findByIdAndDelete(req.params.id);
     if (!deleted) return res.status(404).json({ message: "Product not found" });
+    await handleWishlistSignalsOnProductDelete(deleted);
     return res.status(200).json({ success: true });
   } catch (_error) {
     return res.status(500).json({ message: "Failed to delete product" });

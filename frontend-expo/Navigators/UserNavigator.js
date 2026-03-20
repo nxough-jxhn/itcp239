@@ -7,6 +7,7 @@ import MyOrders from "../Screens/User/MyOrders";
 import NotificationCenter from "../Screens/User/NotificationCenter";
 import OrderDetails from "../Screens/User/OrderDetails";
 import NotificationDetail from "../Screens/User/NotificationDetail";
+import Wishlist from "../Screens/User/Wishlist";
 
 const Stack = createStackNavigator();
 
@@ -17,9 +18,10 @@ const UserNavigator = () => {
             <Stack.Screen name="Register" component={Register} options={{ headerShown: false }} />
             <Stack.Screen name="User Profile" component={UserProfile} options={{ headerShown: false }} />
             <Stack.Screen name="My Orders" component={MyOrders} options={{ headerShown: false }} />
-            <Stack.Screen name="Order Details" component={OrderDetails} options={{ title: "Order Details" }} />
-            <Stack.Screen name="Notifications" component={NotificationCenter} options={{ title: "Notifications" }} />
-            <Stack.Screen name="Notification Detail" component={NotificationDetail} options={{ title: "Notification Detail" }} />
+            <Stack.Screen name="Wishlist" component={Wishlist} options={{ headerShown: false }} />
+            <Stack.Screen name="Order Details" component={OrderDetails} options={{ headerShown: false }} />
+            <Stack.Screen name="Notifications" component={NotificationCenter} options={{ headerShown: false }} />
+            <Stack.Screen name="Notification Detail" component={NotificationDetail} options={{ headerShown: false }} />
         </Stack.Navigator>
     );
 };
