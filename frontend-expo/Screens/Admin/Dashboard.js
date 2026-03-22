@@ -80,6 +80,23 @@ function sameDay(a, b) {
     );
 }
 
+function toLocalDateKey(value) {
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+}
+
+function toLocalMonthKey(value) {
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    return `${y}-${m}`;
+}
+
 function computeDailyRevenue(orders = []) {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
@@ -135,10 +152,10 @@ function buildRevenueSeries(orders = [], filter = "days") {
             return d;
         });
 
-        const map = new Map(days.map((date) => [date.toISOString().slice(0, 10), 0]));
+        const map = new Map(days.map((date) => [toLocalDateKey(date), 0]));
         safeOrders.forEach((order) => {
             const rawDate = order?.dateOrdered || order?.createdAt;
-            const key = new Date(rawDate).toISOString().slice(0, 10);
+            const key = toLocalDateKey(rawDate);
             if (map.has(key)) {
                 map.set(key, toMoney(map.get(key) + Number(order?.totalPrice || 0)));
             }
@@ -157,10 +174,10 @@ function buildRevenueSeries(orders = [], filter = "days") {
             return d;
         });
 
-        const map = new Map(months.map((date) => [date.toISOString().slice(0, 7), 0]));
+        const map = new Map(months.map((date) => [toLocalMonthKey(date), 0]));
         safeOrders.forEach((order) => {
             const rawDate = order?.dateOrdered || order?.createdAt;
-            const key = new Date(rawDate).toISOString().slice(0, 7);
+            const key = toLocalMonthKey(rawDate);
             if (map.has(key)) {
                 map.set(key, toMoney(map.get(key) + Number(order?.totalPrice || 0)));
             }
@@ -179,10 +196,10 @@ function buildRevenueSeries(orders = [], filter = "days") {
         return d;
     });
 
-    const map = new Map(days.map((date) => [date.toISOString().slice(0, 10), 0]));
+    const map = new Map(days.map((date) => [toLocalDateKey(date), 0]));
     safeOrders.forEach((order) => {
         const rawDate = order?.dateOrdered || order?.createdAt;
-        const key = new Date(rawDate).toISOString().slice(0, 10);
+        const key = toLocalDateKey(rawDate);
         if (map.has(key)) {
             map.set(key, toMoney(map.get(key) + Number(order?.totalPrice || 0)));
         }
@@ -453,12 +470,12 @@ const Dashboard = () => {
             });
 
             const dayMap = new Map(
-                days.map((date) => [date.toISOString().slice(0, 10), 0])
+                days.map((date) => [toLocalDateKey(date), 0])
             );
 
             orders.forEach((order) => {
                 const rawDate = order?.dateOrdered || order?.createdAt;
-                const key = new Date(rawDate).toISOString().slice(0, 10);
+                const key = toLocalDateKey(rawDate);
                 if (dayMap.has(key)) {
                     dayMap.set(key, dayMap.get(key) + 1);
                 }

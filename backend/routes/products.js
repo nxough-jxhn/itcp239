@@ -9,6 +9,7 @@ const Wishlist = require("../models/Wishlist");
 const Order = require("../models/Order");
 const Review = require("../models/Review");
 const StockAlert = require("../models/StockAlert");
+const Promo = require("../models/Promo");
 const User = require("../models/User");
 const {
   calculateDiscountedPrice,
@@ -215,6 +216,23 @@ async function updateStockAlerts(product) {
   await StockAlert.updateMany(
     { product: productId, resolved: false },
     { resolved: true }
+  );
+}
+
+async function includeNewProductInAllPromos(productId) {
+  if (!productId) return;
+
+  const now = new Date();
+  await Promo.updateMany(
+    {
+      type: "promo",
+      targetMode: "all",
+      isEnabled: true,
+      endAt: { $gt: now },
+    },
+    {
+      $addToSet: { resolvedProductIds: productId },
+    }
   );
 }
 
@@ -676,6 +694,7 @@ router.post("/", authJwt, uploadProductImages, async (req, res) => {
     });
     const populated = await product.populate("category", "id name color");
     await updateStockAlerts(product);
+    await includeNewProductInAllPromos(product._id);
     return res.status(201).json(populated);
   } catch (_error) {
     return res.status(500).json({ message: "Failed to create product" });
