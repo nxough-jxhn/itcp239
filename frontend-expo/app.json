@@ -38,7 +38,7 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "apiUrl": "http://192.168.1.8:4000/api/v1",
+      "apiUrl": "https://peakplay-backend.onrender.com/api/v1",
       "eas": {
         "projectId": "6f747b51-b33e-4c6e-9d11-89bf760ec81a"
       }

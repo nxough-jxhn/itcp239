@@ -4,6 +4,7 @@ import baseURL from '../../assets/common/baseurl';
 import { getJwtToken, setJwtToken, removeJwtToken } from '../../assets/common/authToken';
 
 export const SET_CURRENT_USER = 'SET_CURRENT_USER';
+const GOOGLE_SIGNIN_TIMEOUT_MS = 45000;
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -93,7 +94,8 @@ export const loginWithGoogleIdToken = async (idToken, dispatch) => {
     if (!idToken) return;
 
     const controller = new AbortController();
-    timeoutId = setTimeout(() => controller.abort(), 12000);
+    // Render free instances can cold-start slowly, so keep a wider timeout for Google auth.
+    timeoutId = setTimeout(() => controller.abort(), GOOGLE_SIGNIN_TIMEOUT_MS);
 
     const res = await fetch(`${baseURL}users/auth/google`, {
       method: 'POST',
@@ -112,7 +114,7 @@ export const loginWithGoogleIdToken = async (idToken, dispatch) => {
       type: 'error',
       text1: 'Google sign-in failed',
       text2: isTimeout
-        ? 'Request timed out. Check backend server and base URL connection.'
+        ? 'Request timed out. If backend is on Render free tier, wait for wake-up then try again.'
         : err.message,
     });
     dispatch(setCurrentUser({}));

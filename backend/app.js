@@ -14,6 +14,9 @@ const wishlistRoutes = require("./routes/wishlist");
 
 const app = express();
 
+// Respect X-Forwarded-* headers from Render's reverse proxy.
+app.set("trust proxy", 1);
+
 function resolveActionLabel(method, pathWithQuery = "") {
   const path = String(pathWithQuery || "").split("?")[0];
   const m = String(method || "").toUpperCase();

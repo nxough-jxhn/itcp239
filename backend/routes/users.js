@@ -41,7 +41,11 @@ function toBoolean(value) {
 
 function buildImageUrl(req, filename) {
   if (!filename) return "";
-  return `${req.protocol}://${req.get("host")}/${config.uploadDir}/${filename}`;
+  const forwardedProto = String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim();
+  const forwardedHost = String(req.headers["x-forwarded-host"] || "").split(",")[0].trim();
+  const protocol = forwardedProto || req.protocol;
+  const host = forwardedHost || req.get("host");
+  return `${protocol}://${host}/${config.uploadDir}/${filename}`;
 }
 
 router.post("/register", upload.single("image"), async (req, res) => {
