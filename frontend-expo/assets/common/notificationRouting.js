@@ -2,12 +2,21 @@ export function getNotificationTarget({ data = {}, isAdmin = false } = {}) {
     const routeHint = String(data.route || "").toLowerCase();
     const typeHint = String(data.type || "").toLowerCase();
     const orderId = data.orderId ? String(data.orderId) : "";
+    const productId = data.productId ? String(data.productId) : "";
+
+    if (routeHint === "stock-alert" && productId) {
+        return {
+            tab: "Home",
+            stackScreen: "Product Detail",
+            params: { item: { id: productId, _id: productId } },
+        };
+    }
 
     if (routeHint === "admin-orders") {
         return {
             tab: "Admin",
-            stackScreen: "Orders",
-            params: orderId ? { focusOrderId: orderId } : undefined,
+            stackScreen: "Order Details",
+            params: { orderId },
         };
     }
 
@@ -15,8 +24,8 @@ export function getNotificationTarget({ data = {}, isAdmin = false } = {}) {
         if (isAdmin) {
             return {
                 tab: "Admin",
-                stackScreen: "Orders",
-                params: { focusOrderId: orderId },
+                stackScreen: "Order Details",
+                params: { orderId },
             };
         }
 

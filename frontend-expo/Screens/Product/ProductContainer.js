@@ -22,6 +22,7 @@ import { fetchWishlistIds, toggleWishlistProduct } from "../../Redux/Actions/wis
 import AuthGlobal from "../../Context/Store/AuthGlobal";
 import { addToCart } from "../../Redux/Actions/cartActions";
 import Toast from "react-native-toast-message";
+import { getProductPricing } from "../../assets/common/productPricing";
 
 const { width } = Dimensions.get("window");
 const FALLBACK_IMAGE = "https://cdn.pixabay.com/photo/2012/04/01/17/29/box-23649_960_720.png";
@@ -38,6 +39,8 @@ const ProductContainer = () => {
     const context = useContext(AuthGlobal);
     const isAdmin = context?.stateUser?.user?.isAdmin === true;
     const productsFromStore = useSelector((state) => state.products?.list || []);
+    const productsLoading = useSelector((state) => state.products?.loadingList === true);
+    const productsError = useSelector((state) => state.products?.error || "");
     const wishlistIds = useSelector((state) => state.wishlist?.ids || []);
 
     const [categories, setCategories] = useState([]);
@@ -163,6 +166,7 @@ const ProductContainer = () => {
         const rating = Number(item?.rating || 0);
         const inStock = Number(item?.countInStock || 0);
         const isWishlisted = wishlistIds.includes(productId);
+        const pricing = getProductPricing(item);
 
         return (
             <TouchableOpacity
@@ -188,16 +192,32 @@ const ProductContainer = () => {
                         ) : null}
                     </View>
 
-                    <Image source={{ uri: item?.image || FALLBACK_IMAGE }} style={styles.productImage} resizeMode="cover" />
+                    <View style={styles.productImageWrap}>
+                        <Image source={{ uri: item?.image || FALLBACK_IMAGE }} style={styles.productImage} resizeMode="cover" />
+                        {pricing.isSale ? (
+                            <View style={styles.productSaleBadge}>
+                                <Text style={styles.productSaleBadgeText}>{pricing.percentOff > 0 ? `${pricing.percentOff}% OFF` : "SALE"}</Text>
+                            </View>
+                        ) : null}
+                        {inStock <= 0 ? (
+                            <View style={styles.stockOverlayBadge}>
+                                <Text style={styles.stockOverlayText}>OUT OF STOCK</Text>
+                            </View>
+                        ) : null}
+                    </View>
 
                     <View style={styles.productNameRow}>
                         <Text style={styles.productName} numberOfLines={1}>{item?.name || "Product"}</Text>
                         {!isAdmin ? (
                             <TouchableOpacity
-                                style={styles.productBagBtn}
+                                style={[styles.productBagBtn, inStock <= 0 && styles.productBagBtnDisabled]}
                                 onPress={(event) => {
                                     event?.stopPropagation?.();
-                                    dispatch(addToCart({ ...item, quantity: 1 }));
+                                    if (inStock <= 0) {
+                                        Toast.show({ topOffset: 60, type: "error", text1: "Product is currently unavailable" });
+                                        return;
+                                    }
+                                    dispatch(addToCart({ ...item, quantity: 1, price: pricing.displayPrice, originalPrice: pricing.originalPrice }));
                                     Toast.show({ topOffset: 60, type: "success", text1: `${item?.name || "Product"} added to Cart` });
                                 }}
                             >
@@ -219,8 +239,12 @@ const ProductContainer = () => {
                             <Text style={styles.stockLabel}>Stock</Text>
                             <Text style={styles.stockValue}>{inStock}</Text>
                         </View>
-                        <Text style={styles.productPrice}>$ {Number(item?.price || 0).toFixed(2)}</Text>
+                        <View style={styles.priceColumn}>
+                            {pricing.isSale ? <Text style={styles.oldPrice}>$ {pricing.originalPrice.toFixed(2)}</Text> : null}
+                            <Text style={[styles.productPrice, pricing.isSale && styles.productPriceSale]}>$ {pricing.displayPrice.toFixed(2)}</Text>
+                        </View>
                     </View>
+                    {inStock <= 0 ? <Text style={styles.stockOutNote}>Currently unavailable</Text> : null}
                 </View>
             </TouchableOpacity>
         );
@@ -237,7 +261,7 @@ const ProductContainer = () => {
                     <Ionicons name="menu-outline" size={24} color="#000" />
                 </TouchableOpacity>
 
-                <Text style={styles.headerTitle}>SnapShop</Text>
+                <Text style={styles.headerTitle}>PeakPlay</Text>
 
                 <View style={styles.headerRightIcons}>
                     <TouchableOpacity style={styles.headerIconBtn} onPress={() => navigation.navigate("Catalog Search")}>
@@ -300,7 +324,11 @@ const ProductContainer = () => {
                             <Text style={styles.viewAllText}>View All</Text>
                         </TouchableOpacity>
                     </View>
-                    {filteredProducts.length > 0 ? (
+                    {productsLoading ? (
+                        <Text style={styles.emptyText}>Loading products...</Text>
+                    ) : productsError ? (
+                        <Text style={styles.reduxErrorText}>Failed to load products. Pull down to retry.</Text>
+                    ) : filteredProducts.length > 0 ? (
                         <View style={styles.productsGrid}>
                             {filteredProducts.map(renderProductCard)}
                         </View>
@@ -491,6 +519,39 @@ const styles = StyleSheet.create({
         marginTop: 6,
         backgroundColor: "#f2f2f2",
     },
+    productImageWrap: {
+        position: "relative",
+    },
+    stockOverlayBadge: {
+        position: "absolute",
+        top: 12,
+        left: 8,
+        backgroundColor: "rgba(0,0,0,0.82)",
+        borderRadius: 8,
+        paddingHorizontal: 7,
+        paddingVertical: 3,
+    },
+    stockOverlayText: {
+        color: "#fff",
+        fontSize: 10,
+        fontWeight: "800",
+        letterSpacing: 0.5,
+    },
+    productSaleBadge: {
+        position: "absolute",
+        top: 8,
+        right: 8,
+        backgroundColor: "#111",
+        borderRadius: 10,
+        paddingHorizontal: 6,
+        paddingVertical: 3,
+    },
+    productSaleBadgeText: {
+        color: "#fff",
+        fontSize: 9,
+        fontWeight: "800",
+        letterSpacing: 0.4,
+    },
     productNameRow: {
         marginTop: 8,
         flexDirection: "row",
@@ -511,6 +572,9 @@ const styles = StyleSheet.create({
         backgroundColor: "#0c0c0c",
         alignItems: "center",
         justifyContent: "center",
+    },
+    productBagBtnDisabled: {
+        backgroundColor: "#9a9a9a",
     },
     productDesc: {
         marginTop: 2,
@@ -558,9 +622,32 @@ const styles = StyleSheet.create({
         fontWeight: "800",
         color: "#111",
     },
+    productPriceSale: {
+        color: "#b62020",
+    },
+    priceColumn: {
+        alignItems: "flex-end",
+    },
+    oldPrice: {
+        fontSize: 10,
+        color: "#777",
+        textDecorationLine: "line-through",
+    },
+    stockOutNote: {
+        marginTop: 4,
+        fontSize: 11,
+        fontWeight: "700",
+        color: "#7a7a7a",
+    },
     emptyText: {
         color: "#666",
         fontSize: 13,
+        paddingVertical: 6,
+    },
+    reduxErrorText: {
+        color: "#b02020",
+        fontSize: 13,
+        fontWeight: "700",
         paddingVertical: 6,
     },
     sectionDivider: {

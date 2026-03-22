@@ -4,6 +4,7 @@ import { Surface, Text } from "react-native-paper";
 import { useNavigation } from "@react-navigation/native";
 import { Picker } from "@react-native-picker/picker";
 import { Ionicons } from "@expo/vector-icons";
+import Toast from "react-native-toast-message";
 
 const methods = [
     { name: "Cash on Delivery", value: 1 },
@@ -26,6 +27,12 @@ const Payment = ({ route }) => {
     const selectedMethod = methods.find((method) => method.value === selected)?.name || "Cash on Delivery";
 
     const onContinue = () => {
+        if (!order?.orderItems?.length) {
+            Toast.show({ topOffset: 60, type: "error", text1: "Checkout flow expired", text2: "Please start from cart" });
+            navigation.navigate("Shipping");
+            return;
+        }
+
         navigation.navigate("Confirm", {
             order,
             paymentMethod: selectedMethod,

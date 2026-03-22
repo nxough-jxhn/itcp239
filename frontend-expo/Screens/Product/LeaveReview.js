@@ -200,12 +200,19 @@ const LeaveReview = ({ route, navigation }) => {
             <View style={styles.field}>
                 <Text style={styles.label}>Rating</Text>
                 <View style={styles.pickerWrap}>
-                    <Picker selectedValue={rating} onValueChange={(value) => setRating(Number(value))}>
+                    <Picker
+                        selectedValue={rating}
+                        onValueChange={(value) => setRating(Number(value))}
+                        style={styles.picker}
+                        itemStyle={styles.pickerItem}
+                        dropdownIconColor="#111"
+                    >
                         {[5, 4, 3, 2, 1].map((star) => (
                             <Picker.Item key={star} label={`${star} star${star > 1 ? "s" : ""}`} value={star} />
                         ))}
                     </Picker>
                 </View>
+                <Text style={styles.ratingPreview}>Selected: {Number(rating || 0)} star{Number(rating || 0) > 1 ? "s" : ""}</Text>
             </View>
 
             <View style={styles.field}>
@@ -261,38 +268,60 @@ const LeaveReview = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: "#f6f6f6" },
-    content: { padding: 16, paddingBottom: 40 },
+    container: { flex: 1, backgroundColor: "#f3f3f3" },
+    content: { padding: 14, paddingBottom: 34 },
     center: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#fff" },
-    loadingText: { marginTop: 8, color: "#555" },
-    title: { fontSize: 22, fontWeight: "700", color: "#1a1a1a" },
-    subtitle: { marginTop: 4, color: "#666", marginBottom: 16 },
-    field: { marginBottom: 16 },
-    label: { fontSize: 14, fontWeight: "600", color: "#222", marginBottom: 6 },
-    pickerWrap: { backgroundColor: "#fff", borderRadius: 10, borderWidth: 1, borderColor: "#ddd" },
-    commentInput: {
-        minHeight: 100,
+    loadingText: { marginTop: 8, color: "#555", fontSize: 12 },
+    title: { fontSize: 18, fontWeight: "700", color: "#161616" },
+    subtitle: { marginTop: 3, color: "#5e5e5e", marginBottom: 12, fontSize: 12 },
+    field: {
+        marginBottom: 12,
         backgroundColor: "#fff",
-        borderRadius: 10,
+        borderRadius: 12,
         borderWidth: 1,
-        borderColor: "#ddd",
-        paddingHorizontal: 12,
-        paddingVertical: 10,
+        borderColor: "#dedede",
+        padding: 10,
+    },
+    label: { fontSize: 12, fontWeight: "700", color: "#1d1d1d", marginBottom: 6 },
+    pickerWrap: { backgroundColor: "#fff", borderRadius: 9, borderWidth: 1, borderColor: "#d8d8d8" },
+    picker: {
+        color: "#111",
+        height: 52,
+    },
+    pickerItem: {
         color: "#111",
     },
+    ratingPreview: {
+        marginTop: 6,
+        color: "#4a4a4a",
+        fontSize: 12,
+        fontWeight: "600",
+    },
+    commentInput: {
+        minHeight: 92,
+        backgroundColor: "#fff",
+        borderRadius: 9,
+        borderWidth: 1,
+        borderColor: "#d8d8d8",
+        paddingHorizontal: 10,
+        paddingVertical: 9,
+        color: "#111",
+        fontSize: 13,
+        lineHeight: 18,
+    },
     mediaHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 },
-    addBtn: { backgroundColor: "#1976d2", borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12 },
-    addBtnText: { color: "#fff", fontWeight: "600" },
+    addBtn: { backgroundColor: "#111", borderRadius: 8, paddingVertical: 7, paddingHorizontal: 10 },
+    addBtnText: { color: "#fff", fontWeight: "600", fontSize: 12 },
     imageItem: { marginRight: 10, position: "relative" },
-    image: { width: 86, height: 86, borderRadius: 10, backgroundColor: "#ddd" },
+    image: { width: 82, height: 82, borderRadius: 9, backgroundColor: "#ddd" },
     removeBtn: {
         position: "absolute",
         top: -8,
         right: -8,
-        width: 22,
-        height: 22,
-        borderRadius: 11,
-        backgroundColor: "#d32f2f",
+        width: 21,
+        height: 21,
+        borderRadius: 10.5,
+        backgroundColor: "#111",
         justifyContent: "center",
         alignItems: "center",
     },
@@ -300,13 +329,13 @@ const styles = StyleSheet.create({
     submitBtn: {
         backgroundColor: "#111",
         borderRadius: 10,
-        height: 48,
+        height: 44,
         justifyContent: "center",
         alignItems: "center",
-        marginTop: 8,
+        marginTop: 4,
     },
-    submitBtnDisabled: { backgroundColor: "#888" },
-    submitText: { color: "#fff", fontWeight: "700", fontSize: 16 },
+    submitBtnDisabled: { backgroundColor: "#777" },
+    submitText: { color: "#fff", fontWeight: "700", fontSize: 14 },
 });
 
 export default LeaveReview;

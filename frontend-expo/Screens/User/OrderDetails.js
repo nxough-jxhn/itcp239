@@ -4,7 +4,6 @@ import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import { useFocusEffect, useNavigation, useRoute } from "@react-navigation/native";
 import { useDispatch, useSelector } from "react-redux";
-import OrderCard from "../../Shared/OrderCard";
 import AppPageHeader from "../../Shared/AppPageHeader";
 import AuthGlobal from "../../Context/Store/AuthGlobal";
 import { fetchOrderById, fetchOrders } from "../../Redux/Actions/orderActions";
@@ -12,6 +11,13 @@ import { addToCart } from "../../Redux/Actions/cartActions";
 import Toast from "react-native-toast-message";
 import baseURL from "../../assets/common/baseurl";
 import { getJwtToken } from "../../assets/common/authToken";
+
+const ADMIN_TRANSITIONS = {
+    pending: ["shipped", "cancelled"],
+    shipped: ["cancelled"],
+    delivered: [],
+    cancelled: [],
+};
 
 const FALLBACK_IMAGE = "https://cdn.pixabay.com/photo/2012/04/01/17/29/box-23649_960_720.png";
 
@@ -65,6 +71,7 @@ const OrderDetails = () => {
     const [productDescriptionById, setProductDescriptionById] = useState({});
     const [reviewByProductId, setReviewByProductId] = useState({});
     const [statusActionLoading, setStatusActionLoading] = useState(false);
+    const [notifyLoading, setNotifyLoading] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
 
     const orderId = route?.params?.orderId;
@@ -215,8 +222,12 @@ const OrderDetails = () => {
                     canLeaveReview: item?.canLeaveReview === true,
                 };
             })
-            .filter((item) => item.productId && (item.hasUserReview || item.canLeaveReview));
-    }, [orderItems, isDelivered]);
+            .filter((item) => {
+                if (!item.productId) return false;
+                if (isAdmin) return item.hasUserReview;
+                return item.hasUserReview || item.canLeaveReview;
+            });
+    }, [orderItems, isDelivered, isAdmin]);
 
     const reviewPreviewKey = useMemo(() => {
         return reviewEligibleItems
@@ -336,6 +347,45 @@ const OrderDetails = () => {
         }
     };
 
+    const notifyOrderUser = async () => {
+        if (!orderId || notifyLoading || !isAdmin) return;
+
+        try {
+            setNotifyLoading(true);
+            const token = (await getJwtToken()) || "";
+            const res = await axios.post(
+                `${baseURL}orders/${orderId}/notify`,
+                {},
+                { headers: { Authorization: `Bearer ${token}` }, timeout: 8000 }
+            );
+
+            if (res?.data?.ok === false) {
+                Toast.show({
+                    topOffset: 60,
+                    type: "error",
+                    text1: res?.data?.message || "User has no registered push token",
+                });
+                return;
+            }
+
+            const customerName = String(order?.user?.name || "there").trim() || "there";
+            Toast.show({
+                topOffset: 60,
+                type: "success",
+                text1: `Notification sent to ${customerName}`,
+                text2: "Tap on customer notification opens this order details screen.",
+            });
+        } catch (err) {
+            Toast.show({
+                topOffset: 60,
+                type: "error",
+                text1: err?.response?.data?.message || "Failed to notify user",
+            });
+        } finally {
+            setNotifyLoading(false);
+        }
+    };
+
     if (!orderId) {
         return (
             <View style={styles.container}>
@@ -399,15 +449,6 @@ const OrderDetails = () => {
         { icon: "people-outline" },
         { icon: "bag-check-outline" },
     ];
-
-    if (isAdmin) {
-        return (
-            <View style={styles.container}>
-                <AppPageHeader title="Order Details" />
-                <OrderCard item={order} update={isAdmin} isAdmin={isAdmin} />
-            </View>
-        );
-    }
 
     return (
         <View style={styles.container}>
@@ -524,38 +565,40 @@ const OrderDetails = () => {
                                                 ? (preview?.comment || "No review text")
                                                 : "You can leave a review for this product."}
                                         </Text>
-                                        <TouchableOpacity
-                                            style={styles.reviewBtn}
-                                            onPress={() => {
-                                                if (item.hasUserReview) {
-                                                    navigation.navigate("Home", {
-                                                        screen: "Product Detail",
-                                                        params: {
-                                                            item: {
-                                                                id: item.productId,
-                                                                _id: item.productId,
-                                                                name: sourceOrderItem?.name || item.productName,
-                                                                image: sourceOrderItem?.image || FALLBACK_IMAGE,
-                                                                description: sourceOrderItem?.description || productDescriptionById[item.productId] || "",
-                                                                price: Number(sourceOrderItem?.price || 0),
+                                        {item.hasUserReview || !isAdmin ? (
+                                            <TouchableOpacity
+                                                style={styles.reviewBtn}
+                                                onPress={() => {
+                                                    if (item.hasUserReview) {
+                                                        navigation.navigate("Home", {
+                                                            screen: "Product Detail",
+                                                            params: {
+                                                                item: {
+                                                                    id: item.productId,
+                                                                    _id: item.productId,
+                                                                    name: sourceOrderItem?.name || item.productName,
+                                                                    image: sourceOrderItem?.image || FALLBACK_IMAGE,
+                                                                    description: sourceOrderItem?.description || productDescriptionById[item.productId] || "",
+                                                                    price: Number(sourceOrderItem?.price || 0),
+                                                                },
                                                             },
+                                                        });
+                                                        return;
+                                                    }
+
+                                                    navigation.navigate("Home", {
+                                                        screen: "Leave Review",
+                                                        params: {
+                                                            orderId: order?.id || order?._id,
+                                                            productId: item.productId,
+                                                            productName: item.productName,
                                                         },
                                                     });
-                                                    return;
-                                                }
-
-                                                navigation.navigate("Home", {
-                                                    screen: "Leave Review",
-                                                    params: {
-                                                        orderId: order?.id || order?._id,
-                                                        productId: item.productId,
-                                                        productName: item.productName,
-                                                    },
-                                                });
-                                            }}
-                                        >
-                                            <Text style={styles.reviewBtnText}>{item.hasUserReview ? "View Review" : "Leave a Review"}</Text>
-                                        </TouchableOpacity>
+                                                }}
+                                            >
+                                                <Text style={styles.reviewBtnText}>{item.hasUserReview ? "View Review" : "Leave a Review"}</Text>
+                                            </TouchableOpacity>
+                                        ) : null}
                                     </View>
                                 </View>
                             );
@@ -583,7 +626,41 @@ const OrderDetails = () => {
                     <Text style={styles.totalVal}>${totalPrice.toFixed(2)}</Text>
                 </View>
 
-                {status === "pending" ? (
+                {isAdmin ? (
+                    <View style={styles.adminActionsWrap}>
+                        <TouchableOpacity
+                            style={[styles.statusBtn, notifyLoading && styles.statusBtnDisabled]}
+                            onPress={notifyOrderUser}
+                            disabled={notifyLoading}
+                        >
+                            <Text style={styles.statusBtnText}>{notifyLoading ? "Sending notification..." : "Notify User"}</Text>
+                        </TouchableOpacity>
+
+                        {(ADMIN_TRANSITIONS[status] || []).length > 0 ? (
+                            <View style={styles.adminStatusRow}>
+                                {(ADMIN_TRANSITIONS[status] || []).map((nextStatus) => (
+                                    <TouchableOpacity
+                                        key={nextStatus}
+                                        style={[
+                                            styles.statusBtn,
+                                            styles.statusBtnHalf,
+                                            nextStatus === "cancelled" && styles.statusBtnDanger,
+                                            statusActionLoading && styles.statusBtnDisabled,
+                                        ]}
+                                        onPress={() => updateOrderStatus(nextStatus)}
+                                        disabled={statusActionLoading}
+                                    >
+                                        <Text style={styles.statusBtnText}>
+                                            {statusActionLoading ? "Updating..." : `Mark ${nextStatus}`}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        ) : null}
+                    </View>
+                ) : null}
+
+                {!isAdmin && status === "pending" ? (
                     <TouchableOpacity
                         style={[styles.statusBtn, styles.statusBtnDanger, statusActionLoading && styles.statusBtnDisabled]}
                         onPress={() => updateOrderStatus("cancelled")}
@@ -593,7 +670,7 @@ const OrderDetails = () => {
                     </TouchableOpacity>
                 ) : null}
 
-                {status === "shipped" ? (
+                {!isAdmin && status === "shipped" ? (
                     <View style={styles.statusBtnRow}>
                         <TouchableOpacity
                             style={[styles.statusBtn, styles.statusBtnDanger, styles.statusBtnHalf, statusActionLoading && styles.statusBtnDisabled]}
@@ -612,7 +689,7 @@ const OrderDetails = () => {
                     </View>
                 ) : null}
 
-                {status === "delivered" || status === "cancelled" ? (
+                {!isAdmin && (status === "delivered" || status === "cancelled") ? (
                     <>
                         <TouchableOpacity
                             style={[styles.reorderBtn, !canReorder && styles.reorderBtnDisabled]}
@@ -921,6 +998,14 @@ const styles = StyleSheet.create({
     },
     statusBtnRow: {
         marginTop: 14,
+        flexDirection: "row",
+        gap: 8,
+    },
+    adminActionsWrap: {
+        marginTop: 14,
+    },
+    adminStatusRow: {
+        marginTop: 10,
         flexDirection: "row",
         gap: 8,
     },

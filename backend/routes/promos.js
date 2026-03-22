@@ -25,6 +25,11 @@ function requireAdmin(req, res) {
 }
 
 function parseDateInput(value) {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    const [year, month, day] = value.trim().split("-").map((part) => Number(part));
+    const parsed = new Date(year, month - 1, day, 0, 0, 0, 0);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
@@ -287,18 +292,22 @@ function promoToResponse(promo) {
 async function sendPromoNotification(promo) {
   const recipients = await User.find(
     { isAdmin: false, pushToken: { $ne: "" } },
-    "pushToken pushTokenType"
+    "name pushToken pushTokenType"
   ).lean();
 
-  const tokens = recipients
+  const recipientEntries = recipients
     .filter((user) => user.pushToken)
-    .map((user) => ({ token: user.pushToken, type: user.pushTokenType || "fcm" }));
+    .map((user) => ({
+      token: user.pushToken,
+      type: user.pushTokenType || "fcm",
+      name: String(user?.name || "").trim(),
+    }));
 
-  const expoCount = tokens.filter((token) => String(token.type).toLowerCase() === "expo" || String(token.token || "").startsWith("ExponentPushToken")).length;
-  const fcmCount = tokens.length - expoCount;
-  console.log(`[promos] Notification recipients: ${tokens.length} total (${fcmCount} FCM, ${expoCount} Expo)`);
+  const expoCount = recipientEntries.filter((token) => String(token.type).toLowerCase() === "expo" || String(token.token || "").startsWith("ExponentPushToken")).length;
+  const fcmCount = recipientEntries.length - expoCount;
+  console.log(`[promos] Notification recipients: ${recipientEntries.length} total (${fcmCount} FCM, ${expoCount} Expo)`);
 
-  if (tokens.length === 0) {
+  if (recipientEntries.length === 0) {
     return { sent: 0 };
   }
 
@@ -307,21 +316,27 @@ async function sendPromoNotification(promo) {
   const notificationType = campaignType === "voucher" ? "voucher" : "promo";
   const voucherSuffix = campaignType === "voucher" && promo.code ? ` Use code: ${promo.code}.` : "";
 
-  await sendToTokens(tokens, {
-    title: String(promo.name || "Promo"),
-    body: `${promo.description} (Valid for ${durationLabel})${voucherSuffix}`,
-    data: {
-      route: "notifications",
-      type: notificationType,
-      promoId: promo.id || promo._id?.toString(),
-      campaignType: notificationType,
-      code: promo.code || "",
-      startAt: new Date(promo.startAt).toISOString(),
-      endAt: new Date(promo.endAt).toISOString(),
-    },
-  });
+  const sendResults = await Promise.allSettled(
+    recipientEntries.map((entry) => {
+      const greetingName = entry.name || "there";
+      return sendToTokens([{ token: entry.token, type: entry.type }], {
+        title: `Hey ${greetingName}`,
+        body: `${promo.description} (Valid for ${durationLabel})${voucherSuffix}`,
+        data: {
+          route: "notifications",
+          type: notificationType,
+          promoId: promo.id || promo._id?.toString(),
+          campaignType: notificationType,
+          code: promo.code || "",
+          startAt: new Date(promo.startAt).toISOString(),
+          endAt: new Date(promo.endAt).toISOString(),
+        },
+      });
+    })
+  );
 
-  return { sent: tokens.length };
+  const sent = sendResults.filter((result) => result.status === "fulfilled").length;
+  return { sent };
 }
 
 function parseCartItemsForValidation(orderItems = []) {
@@ -807,6 +822,11 @@ router.post("/:id/notify", authJwt, async (req, res) => {
       return res.status(404).json({ message: "Promo not found" });
     }
 
+    const status = derivePromoStatus(promo);
+    if (status === "inactive" || status === "expired") {
+      return res.status(400).json({ message: "Only active or scheduled campaigns can notify users" });
+    }
+
     const notifyResult = await sendPromoNotification(promo);
     promo.lastNotifiedAt = new Date();
     await promo.save();
@@ -886,11 +906,15 @@ router.post("/:id/reactivate", authJwt, async (req, res) => {
     promo.resolvedProductIds = strategyResult.finalResolvedIds;
     promo.conflictStrategy = conflictStrategy;
     promo.isEnabled = true;
+
+    const notifyResult = await sendPromoNotification(promo);
+    promo.lastNotifiedAt = new Date();
     await promo.save();
 
     return res.status(200).json({
       success: true,
       promo: promoToResponse(promo),
+      sent: notifyResult.sent,
       conflictsResolved: strategyResult.conflictsResolved,
     });
   } catch (_error) {

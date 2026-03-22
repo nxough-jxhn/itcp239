@@ -10,7 +10,7 @@ const config = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
   corsOrigin: process.env.CORS_ORIGIN || "*",
   uploadDir: process.env.UPLOAD_DIR || "uploads",
-  maxFileSizeMb: Number(process.env.MAX_FILE_SIZE_MB || 5),
+  maxFileSizeMb: Number(process.env.MAX_FILE_SIZE_MB || 15),
   fcmServiceAccountPath: process.env.FCM_SERVICE_ACCOUNT_PATH || "",
   // [MP2] Social login - Google OAuth. Set GOOGLE_CLIENT_ID or GOOGLE_CLIENT_IDS (comma-separated) in .env.
   googleClientIds: (process.env.GOOGLE_CLIENT_IDS || process.env.GOOGLE_CLIENT_ID || "")

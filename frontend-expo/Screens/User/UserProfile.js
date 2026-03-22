@@ -179,6 +179,11 @@ const UserProfile = () => {
     };
 
     const saveProfile = async () => {
+        let profileUpdated = false;
+        let imageUpdated = false;
+        let profileErrorMessage = "";
+        let imageErrorMessage = "";
+
         try {
             setIsSaving(true);
             const jwt = await getJwtToken();
@@ -186,8 +191,6 @@ const UserProfile = () => {
                 Toast.show({ topOffset: 60, type: "error", text1: "Session expired", text2: "Please login again" });
                 return;
             }
-
-            await uploadProfilePhoto(jwt);
 
             const payload = {
                 name,
@@ -200,15 +203,67 @@ const UserProfile = () => {
                 ...(deliveryLocation ? { deliveryLocation } : {}),
             };
 
-            const response = await axios.put(`${baseURL}users/profile`, payload, {
-                headers: { Authorization: `Bearer ${jwt}` },
-                timeout: REQUEST_TIMEOUT_MS,
-            });
+            try {
+                const profileResponse = await axios.put(`${baseURL}users/profile`, payload, {
+                    headers: { Authorization: `Bearer ${jwt}` },
+                    timeout: REQUEST_TIMEOUT_MS,
+                });
+                hydrateProfileForm(profileResponse.data);
+                profileUpdated = true;
+            } catch (err) {
+                profileErrorMessage = err?.response?.data?.message || "Failed to update profile details";
+            }
 
-            hydrateProfileForm(response.data);
-            Toast.show({ topOffset: 60, type: "success", text1: "Profile updated" });
-        } catch (_error) {
-            Toast.show({ topOffset: 60, type: "error", text1: "Failed to save profile" });
+            if (newProfileImage) {
+                try {
+                    const imageResponse = await uploadProfilePhoto(jwt);
+                    if (imageResponse) {
+                        hydrateProfileForm(imageResponse);
+                    }
+                    imageUpdated = true;
+                } catch (err) {
+                    const rawResponse = String(err?.response?.data || "");
+                    const isFileTooLarge = rawResponse.includes("File too large") || err?.response?.status === 413;
+                    imageErrorMessage = isFileTooLarge
+                        ? "Profile photo is too large"
+                        : (err?.response?.data?.message || "Failed to update profile image");
+                }
+            }
+
+            if (profileUpdated || imageUpdated) {
+                const withImage = newProfileImage ? imageUpdated : true;
+                const withProfile = profileUpdated;
+                if (withImage && withProfile) {
+                    Toast.show({ topOffset: 60, type: "success", text1: "Profile updated" });
+                } else if (withProfile) {
+                    Toast.show({
+                        topOffset: 60,
+                        type: "success",
+                        text1: "Profile details updated",
+                        text2: imageErrorMessage || undefined,
+                    });
+                } else {
+                    Toast.show({
+                        topOffset: 60,
+                        type: "success",
+                        text1: "Profile photo updated",
+                        text2: profileErrorMessage || undefined,
+                    });
+                }
+                return;
+            }
+
+            Toast.show({
+                topOffset: 60,
+                type: "error",
+                text1: profileErrorMessage || imageErrorMessage || "Failed to save profile",
+            });
+        } catch (err) {
+            Toast.show({
+                topOffset: 60,
+                type: "error",
+                text1: err?.response?.data?.message || err?.message || "Failed to save profile",
+            });
         } finally {
             setIsSaving(false);
         }
@@ -324,7 +379,7 @@ const UserProfile = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: "#f7f7f7",
+        backgroundColor: "#f3f3f3",
     },
     subContainer: {
         paddingTop: 12,
@@ -335,8 +390,8 @@ const styles = StyleSheet.create({
         backgroundColor: "#fff",
         borderRadius: 14,
         borderWidth: 1,
-        borderColor: "#ececec",
-        padding: 16,
+        borderColor: "#e1e1e1",
+        padding: 14,
         alignItems: "center",
         marginBottom: 12,
     },
@@ -351,7 +406,7 @@ const styles = StyleSheet.create({
         marginBottom: 8,
     },
     nameTitle: {
-        fontSize: 24,
+        fontSize: 20,
         fontWeight: "700",
         color: "#1a1a1a",
     },
@@ -364,9 +419,9 @@ const styles = StyleSheet.create({
     },
     adminBadge: {
         backgroundColor: "#111",
-        borderRadius: 12,
-        paddingHorizontal: 14,
-        paddingVertical: 5,
+        borderRadius: 11,
+        paddingHorizontal: 12,
+        paddingVertical: 4,
     },
     adminBadgeText: {
         color: "white",
@@ -376,8 +431,8 @@ const styles = StyleSheet.create({
     },
     mapButton: {
         backgroundColor: "#111",
-        paddingVertical: 8,
-        paddingHorizontal: 12,
+        paddingVertical: 7,
+        paddingHorizontal: 11,
         borderRadius: 8,
         alignItems: "center",
     },
@@ -387,27 +442,29 @@ const styles = StyleSheet.create({
         fontSize: 12,
     },
     completionBadge: {
-        borderRadius: 12,
+        borderRadius: 11,
         paddingHorizontal: 12,
-        paddingVertical: 5,
+        paddingVertical: 4,
+        borderWidth: 1,
+        borderColor: "#cfcfcf",
     },
     completeBadge: {
-        backgroundColor: "#1f7a3d",
+        backgroundColor: "#171717",
     },
     incompleteBadge: {
-        backgroundColor: "#8b1e24",
+        backgroundColor: "#5a5a5a",
     },
     completionBadgeText: {
         color: "white",
         fontWeight: "700",
         letterSpacing: 0.2,
-        fontSize: 12,
+        fontSize: 11,
     },
     missingFieldsText: {
         marginTop: 2,
         marginBottom: 10,
-        color: "#b71c1c",
-        fontSize: 12,
+        color: "#555",
+        fontSize: 11,
         marginHorizontal: 8,
         textAlign: "center",
     },
@@ -415,15 +472,15 @@ const styles = StyleSheet.create({
         backgroundColor: "#fff",
         borderRadius: 14,
         borderWidth: 1,
-        borderColor: "#ececec",
-        padding: 14,
+        borderColor: "#e1e1e1",
+        padding: 12,
         marginBottom: 12,
     },
     sectionHeader: {
-        fontSize: 17,
+        fontSize: 15,
         fontWeight: "700",
         color: "#222",
-        marginBottom: 10,
+        marginBottom: 8,
     },
     sectionHeaderRow: {
         flexDirection: "row",
@@ -432,7 +489,7 @@ const styles = StyleSheet.create({
         marginBottom: 2,
     },
     emailText: {
-        fontSize: 14,
+        fontSize: 12,
         color: "#555",
         marginTop: 3,
         marginBottom: 4,
@@ -460,13 +517,13 @@ const styles = StyleSheet.create({
         fontSize: 12,
     },
     formActionsWrap: {
-        marginTop: 14,
+        marginTop: 12,
         gap: 10,
         paddingTop: 4,
     },
     formActionBtn: {
         backgroundColor: "#111",
-        minHeight: 48,
+        minHeight: 44,
         borderRadius: 10,
         alignItems: "center",
         justifyContent: "center",
@@ -478,7 +535,7 @@ const styles = StyleSheet.create({
     formActionText: {
         color: "#fff",
         fontWeight: "700",
-        fontSize: 15,
+        fontSize: 14,
     },
     bottomSpace: {
         height: 8,

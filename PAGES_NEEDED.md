@@ -37,3 +37,20 @@
 - **Drawer** is available on all main app screens (Home, Cart, Profile, etc.). Open by swiping from the left edge or tapping the grid icon on the Home header.
 - Carousel uses 3 images, auto-slides every 3 seconds.
 - Search bar is on its own full-width row above the product list.
+
+
+Admin stack screens (all still mostly legacy/default-header style):
+Dashboard.js
+Products.js - DONE
+ProductForm.js - DONE
+Orders.js - DONE and details DONE
+Categories.js - DONE
+StockAlerts.js - DONE - add product with 0 stocks on the list and add edit button to change stocks.
+PromoBroadcast.js - when inactive shouldnt be able to click the notify users, react button not working
+ListItem.js
+
+Legacy product components present but likely not currently active in main customer flow:
+CategoryFilter.js
+ProductList.js
+SearchedProduct.js
+

@@ -1,16 +1,25 @@
 /**
- * Backend API base URL. The app sends all API requests (login, products, orders, etc.) here.
- *
- * SETUP FOR EXPO GO ON YOUR PHONE:
- * 1. Run the backend on your laptop (e.g. node server.js in the backend folder, port 4000).
- * 2. Find your laptop's IP (Windows: ipconfig → IPv4; same WiFi as your phone).
- * 3. Set BACKEND_HOST below to that IP, e.g. 'http://192.168.1.105:4000'
- * 4. Run: npx expo start → scan QR with Expo Go. Your phone will call this URL.
- *
- * For web/same machine: use 'http://localhost:4000'
- * When backend is deployed to cloud: set BACKEND_HOST to that URL (e.g. https://your-api.railway.app)
+ * Backend API base URL.
+ * Priority:
+ * 1) expo.extra.apiUrl from app.json/app.config
+ * 2) local fallback host below
  */
-const BACKEND_HOST = 'http://192.168.1.8:4000';
-const baseURL = `${BACKEND_HOST}/api/v1/`;
+import Constants from "expo-constants";
+
+const FALLBACK_API_URL = "http://192.168.1.8:4000/api/v1";
+
+function normalizeApiUrl(value) {
+	const raw = String(value || "").trim();
+	if (!raw) return "";
+	return raw.replace(/\/+$/, "");
+}
+
+const configuredApiUrl =
+	Constants?.expoConfig?.extra?.apiUrl
+	|| Constants?.manifest2?.extra?.expoClient?.extra?.apiUrl
+	|| Constants?.manifest?.extra?.apiUrl
+	|| "";
+
+const baseURL = `${normalizeApiUrl(configuredApiUrl || FALLBACK_API_URL)}/`;
 
 export default baseURL;

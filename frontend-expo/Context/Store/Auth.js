@@ -18,19 +18,38 @@ const Auth = props => {
     const [showChild, setShowChild] = useState(false);
 
     useEffect(() => {
-        setShowChild(true);
-        // [Unit 2] Restore auth on app start - load JWT from storage to keep user logged in
-        getJwtToken().then((token) => {
-            if (token) {
-                try {
-                    const decoded = jwtDecode(token);
-                    dispatch(setCurrentUser(decoded));
-                } catch (_e) {
-                    removeJwtToken();
+        let mounted = true;
+
+        const restoreAuth = async () => {
+            // [Unit 2] Resolve auth before mounting navigator trees to avoid route reset races.
+            try {
+                const token = await getJwtToken();
+                if (token) {
+                    try {
+                        const decoded = jwtDecode(token);
+                        dispatch(setCurrentUser(decoded));
+                    } catch (_e) {
+                        await removeJwtToken();
+                        dispatch(setCurrentUser({}));
+                    }
+                } else {
+                    dispatch(setCurrentUser({}));
+                }
+            } catch (_e) {
+                dispatch(setCurrentUser({}));
+            } finally {
+                if (mounted) {
+                    setShowChild(true);
                 }
             }
-        }).catch(() => {});
-        return () => setShowChild(false);
+        };
+
+        restoreAuth();
+
+        return () => {
+            mounted = false;
+            setShowChild(false);
+        };
     }, []);
 
     if (!showChild) {

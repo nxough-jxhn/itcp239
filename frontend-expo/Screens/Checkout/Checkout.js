@@ -38,6 +38,12 @@ const Checkout = () => {
         setOrderItems(cartItems);
         setLoadingProfile(true);
 
+        if (!Array.isArray(cartItems) || cartItems.length === 0) {
+            navigation.navigate("Cart");
+            setLoadingProfile(false);
+            return;
+        }
+
         if (context.stateUser.isAuthenticated) {
             setUser(context.stateUser.user.userId);
             getJwtToken()

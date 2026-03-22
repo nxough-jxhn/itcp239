@@ -10,7 +10,8 @@ import { Ionicons } from "@expo/vector-icons";
 const Input = (props) => {
     const [hidden, setHidden] = useState(true);
     const isPassword = props.secureTextEntry && props.showToggle;
-    const { showToggle, label, ...rest } = props;
+    const { showToggle, label, placeholderTextColor, ...rest } = props;
+    const effectivePlaceholderColor = placeholderTextColor || "rgba(17,17,17,0.35)";
 
     return (
         <View style={styles.wrapper}>
@@ -22,7 +23,7 @@ const Input = (props) => {
                         isPassword && styles.inputWithToggle,
                         props.editable === false && styles.inputDisabled,
                     ]}
-                    placeholderTextColor="#999"
+                    placeholderTextColor={effectivePlaceholderColor}
                     {...rest}
                     secureTextEntry={isPassword ? hidden : props.secureTextEntry}
                 />

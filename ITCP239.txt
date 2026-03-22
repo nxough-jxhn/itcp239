@@ -47,6 +47,27 @@ be on time.
 if you have a term test on other subjects that coincide with the time of the project presentation, take the exam first then come back later for the presentation.
 
 
+================================
+PROFESSOR CLARIFICATIONS (MUST FOLLOW)
+================================
+
+1) Social login scope for grading:
+- Google/Facebook in the requirement can be satisfied by one provider.
+- In practice, Google-only has been accepted for full points in past project checks.
+- Facebook button/flow is optional and not required for this project pass criteria.
+
+2) Submission and test environment policy:
+- Project should be built as APK and installed on phone.
+- Backend application should be deployed on Vercel or Render.
+- Be ready with project code during checking.
+- The APK file will be uploaded to a conference-room computer to avoid further updating.
+
+3) Product vs Service CRUD interpretation:
+- Requirement is either ecommerce (Product CRUD) or service-centered (Service CRUD).
+- Implementing Product CRUD alone is valid for ecommerce scope.
+- Separate Service CRUD is not required when Product CRUD is the selected system type.
+
+
 =============================
 STATUS TRACKER (PROJECT AUDIT)
 =============================
@@ -67,7 +88,7 @@ mp2 User functions 20 pts
 [DONE] User registration (email/password)
 [DONE] User profile update
 [DONE] Upload/take photo for registration and profile image implemented
-[ON HOLD] Google/Facebook login (Google flow unstable right now, Facebook removed by decision)
+[DONE] Social login requirement satisfied via Google-only implementation (Facebook optional per professor clarification)
 
 mp3 Review Ratings 20 pts
 [DONE] User review/rating system API + UI flow implemented

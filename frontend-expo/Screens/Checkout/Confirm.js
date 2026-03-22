@@ -11,7 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import axios from "axios";
 import { StackActions, useNavigation } from "@react-navigation/native";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import baseURL from "../../assets/common/baseurl";
 import Toast from "react-native-toast-message";
 import { clearCart } from "../../Redux/Actions/cartActions";
@@ -23,6 +23,7 @@ const Confirm = ({ route }) => {
     const paymentCard = route?.params?.paymentCard || "";
     const dispatch = useDispatch();
     const navigation = useNavigation();
+    const cartItems = useSelector((state) => state.cartItems || []);
 
     const [voucherModalVisible, setVoucherModalVisible] = useState(false);
     const [loadingVouchers, setLoadingVouchers] = useState(false);
@@ -32,6 +33,54 @@ const Confirm = ({ route }) => {
     const [voucherPreviewsByCode, setVoucherPreviewsByCode] = useState({});
     const [selectedVoucherCode, setSelectedVoucherCode] = useState("");
     const [selectedVoucherPreview, setSelectedVoucherPreview] = useState(null);
+    const [createdOrderId, setCreatedOrderId] = useState("");
+    const [redirectSeconds, setRedirectSeconds] = useState(5);
+
+    const findNavigatorWithRoute = (routeName) => {
+        let current = navigation;
+        while (current) {
+            const routeNames = current.getState?.()?.routeNames || [];
+            if (routeNames.includes(routeName)) {
+                return current;
+            }
+            current = current.getParent?.();
+        }
+        return null;
+    };
+
+    const findCartStackNavigator = () => {
+        let current = navigation;
+        while (current) {
+            const routeNames = current.getState?.()?.routeNames || [];
+            if (routeNames.includes("Cart") && routeNames.includes("Checkout")) {
+                return current;
+            }
+            current = current.getParent?.();
+        }
+        return null;
+    };
+
+    const goToOrderDetails = () => {
+        if (!createdOrderId) {
+            continueHome();
+            return;
+        }
+
+        const userTab = findNavigatorWithRoute("User");
+        if (userTab) {
+            userTab.navigate("User", {
+                screen: "Order Details",
+                params: { orderId: createdOrderId },
+            });
+        } else {
+            navigation.navigate("User", {
+                screen: "Order Details",
+                params: { orderId: createdOrderId },
+            });
+        }
+
+        setSuccessVisible(false);
+    };
 
     const getItemFinalUnitPrice = (item) => {
         const discounted = Number(item?.discountedPrice);
@@ -131,6 +180,21 @@ const Confirm = ({ route }) => {
         }
     }, [voucherModalVisible]);
 
+    useEffect(() => {
+        if (!successVisible) return;
+        const timer = setTimeout(() => {
+            setRedirectSeconds((prev) => Math.max(0, prev - 1));
+        }, 1000);
+
+        return () => clearTimeout(timer);
+    }, [successVisible, redirectSeconds]);
+
+    useEffect(() => {
+        if (!successVisible) return;
+        if (redirectSeconds > 0) return;
+        goToOrderDetails();
+    }, [successVisible, redirectSeconds, createdOrderId]);
+
     const selectVoucher = (code) => {
         const normalizedCode = String(code || "").trim().toUpperCase();
         const preview = voucherPreviewsByCode[normalizedCode] || null;
@@ -168,7 +232,12 @@ const Confirm = ({ route }) => {
                     : {}),
             };
 
-            await axios.post(`${baseURL}orders`, payload, config);
+            const response = await axios.post(`${baseURL}orders`, payload, config);
+            const newOrderId = String(response?.data?.id || response?.data?._id || "");
+
+            dispatch(clearCart());
+            setCreatedOrderId(newOrderId);
+            setRedirectSeconds(5);
             setSuccessVisible(true);
         } catch (error) {
             Toast.show({
@@ -184,18 +253,21 @@ const Confirm = ({ route }) => {
 
     const continueHome = () => {
         setSuccessVisible(false);
-        dispatch(clearCart());
-
-        const checkoutTabsNav = navigation.getParent?.();
-        const cartStackNav = checkoutTabsNav?.getParent?.();
-        const mainTabNav = cartStackNav?.getParent?.();
+        const cartStackNav = findCartStackNavigator();
+        const homeNav = findNavigatorWithRoute("Home");
+        const cartTabNav = findNavigatorWithRoute("Cart Screen");
 
         if (cartStackNav?.dispatch) {
             cartStackNav.dispatch(StackActions.popToTop());
         }
 
-        if (mainTabNav?.navigate) {
-            mainTabNav.navigate("Home");
+        if (homeNav?.navigate) {
+            homeNav.navigate("Home");
+            return;
+        }
+
+        if (cartTabNav?.navigate) {
+            cartTabNav.navigate("Cart Screen", { screen: "Cart" });
             return;
         }
 
@@ -367,8 +439,9 @@ const Confirm = ({ route }) => {
                         </View>
                         <Text style={styles.successTitle}>Order Successful!</Text>
                         <Text style={styles.successSub}>You have successfully made order</Text>
+                        <Text style={styles.redirectText}>Redirecting to order details in {redirectSeconds}s...</Text>
                         <TouchableOpacity style={styles.successBtn} onPress={continueHome}>
-                            <Text style={styles.successBtnText}>Continue Home</Text>
+                            <Text style={styles.successBtnText}>Go to Home</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -701,6 +774,12 @@ const styles = StyleSheet.create({
         color: "#666",
         fontSize: 14,
         textAlign: "center",
+    },
+    redirectText: {
+        marginTop: 8,
+        color: "#6a6a6a",
+        fontSize: 12,
+        fontWeight: "600",
     },
     successBtn: {
         marginTop: 16,

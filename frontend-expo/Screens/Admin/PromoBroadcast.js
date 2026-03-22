@@ -12,6 +12,7 @@ import axios from "axios";
 import Toast from "react-native-toast-message";
 import baseURL from "../../assets/common/baseurl";
 import { getJwtToken } from "../../assets/common/authToken";
+import AppPageHeader from "../../Shared/AppPageHeader";
 
 const TARGET_MODES = [
     { key: "products", label: "Specific Products" },
@@ -54,7 +55,10 @@ function sanitizeCodeInput(value) {
 function formatDateInput(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "";
-    return date.toISOString().slice(0, 10);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
 }
 
 function startToday() {
@@ -304,7 +308,9 @@ const PromoBroadcast = () => {
                 topOffset: 60,
                 type: "success",
                 text1: isReactivating ? "Promo reactivated" : isEditing ? "Promo updated" : "Promo created",
-                text2: !isEditing && !isReactivating ? `Users notified: ${sent}` : undefined,
+                text2: isReactivating
+                    ? `Users notified: ${sent}`
+                    : (!isEditing ? `Users notified: ${sent}` : undefined),
             });
             resetForm();
             await loadAll();
@@ -378,10 +384,10 @@ const PromoBroadcast = () => {
     };
 
     const statusColor = (status) => {
-        if (status === "active") return "#2e7d32";
-        if (status === "scheduled") return "#1976d2";
-        if (status === "inactive") return "#616161";
-        if (status === "expired") return "#b71c1c";
+        if (status === "active") return "#111";
+        if (status === "scheduled") return "#2f2f2f";
+        if (status === "inactive") return "#7a7a7a";
+        if (status === "expired") return "#5a5a5a";
         return "#666";
     };
 
@@ -395,7 +401,10 @@ const PromoBroadcast = () => {
     }
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+        <View style={styles.container}>
+            <AppPageHeader title="Promo Broadcast" />
+
+            <ScrollView contentContainerStyle={styles.content}>
             <Text style={styles.heading}>Promo Management</Text>
             <Text style={styles.subheading}>
                 Active/Scheduled campaigns: {activeCount} | Total campaigns: {promos.length}
@@ -654,6 +663,7 @@ const PromoBroadcast = () => {
                         const promoId = promo.id || promo._id;
                         const canDeactivate = promo.status === "active" || promo.status === "scheduled";
                         const canReactivate = promo.status === "inactive" || promo.status === "expired";
+                        const canNotify = promo.status !== "inactive" && promo.status !== "expired";
                         return (
                             <View key={promoId} style={styles.promoCard}>
                                 <View style={styles.promoHeader}>
@@ -675,8 +685,12 @@ const PromoBroadcast = () => {
                                     <TouchableOpacity style={styles.outlineButton} onPress={() => applyPromoToForm(promo)}>
                                         <Text style={styles.outlineButtonText}>Edit</Text>
                                     </TouchableOpacity>
-                                    <TouchableOpacity style={styles.outlineButton} onPress={() => notifyPromo(promoId)}>
-                                        <Text style={styles.outlineButtonText}>Notify Users</Text>
+                                    <TouchableOpacity
+                                        style={[styles.outlineButton, !canNotify && styles.outlineButtonDisabled]}
+                                        onPress={() => notifyPromo(promoId)}
+                                        disabled={!canNotify}
+                                    >
+                                        <Text style={[styles.outlineButtonText, !canNotify && styles.outlineButtonTextDisabled]}>Notify Users</Text>
                                     </TouchableOpacity>
                                     {canDeactivate ? (
                                         <TouchableOpacity style={styles.solidDangerButton} onPress={() => deactivatePromo(promoId)}>
@@ -694,7 +708,8 @@ const PromoBroadcast = () => {
                     })
                 )}
             </View>
-        </ScrollView>
+            </ScrollView>
+        </View>
     );
 };
 
@@ -704,7 +719,8 @@ const styles = StyleSheet.create({
         backgroundColor: "#f5f5f5",
     },
     content: {
-        padding: 16,
+        paddingHorizontal: 12,
+        paddingTop: 10,
         paddingBottom: 24,
     },
     loadingContainer: {
@@ -718,7 +734,7 @@ const styles = StyleSheet.create({
         color: "#444",
     },
     heading: {
-        fontSize: 22,
+        fontSize: 18,
         fontWeight: "700",
         color: "#111",
         marginBottom: 6,
@@ -730,11 +746,11 @@ const styles = StyleSheet.create({
     },
     panel: {
         backgroundColor: "#fff",
-        borderRadius: 12,
+        borderRadius: 14,
         padding: 12,
         marginBottom: 14,
         borderWidth: 1,
-        borderColor: "#ececec",
+        borderColor: "#e5e5e5",
     },
     panelTitle: {
         fontSize: 16,
@@ -743,20 +759,21 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     label: {
-        fontSize: 14,
+        fontSize: 12,
         fontWeight: "600",
         color: "#222",
         marginBottom: 6,
     },
     input: {
-        backgroundColor: "#fff",
+        backgroundColor: "#fafafa",
         borderWidth: 1,
-        borderColor: "#ddd",
-        borderRadius: 8,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
+        borderColor: "#d4d4d4",
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 9,
         marginBottom: 12,
         color: "#111",
+        fontSize: 13,
     },
     textArea: {
         minHeight: 100,
@@ -814,32 +831,32 @@ const styles = StyleSheet.create({
         backgroundColor: "#fafafa",
     },
     smallChipActive: {
-        backgroundColor: "#e8f3ff",
-        borderColor: "#1976d2",
+        backgroundColor: "#ededed",
+        borderColor: "#111",
     },
     smallChipText: {
         fontSize: 11,
         color: "#333",
     },
     smallChipTextActive: {
-        color: "#0d47a1",
+        color: "#111",
         fontWeight: "700",
     },
     conflictBox: {
-        backgroundColor: "#fff8e1",
-        borderColor: "#ffd54f",
+        backgroundColor: "#f3f3f3",
+        borderColor: "#cfcfcf",
         borderWidth: 1,
         borderRadius: 10,
         padding: 10,
         marginBottom: 10,
     },
     conflictTitle: {
-        color: "#8d6e00",
+        color: "#2a2a2a",
         fontWeight: "700",
         marginBottom: 4,
     },
     conflictText: {
-        color: "#5d4600",
+        color: "#444",
         marginBottom: 10,
         fontSize: 12,
     },
@@ -933,13 +950,20 @@ const styles = StyleSheet.create({
         fontWeight: "700",
         fontSize: 12,
     },
+    outlineButtonDisabled: {
+        borderColor: "#d8d8d8",
+        backgroundColor: "#f2f2f2",
+    },
+    outlineButtonTextDisabled: {
+        color: "#9a9a9a",
+    },
     solidButton: {
         borderRadius: 8,
         paddingVertical: 8,
         paddingHorizontal: 10,
         marginRight: 8,
         marginBottom: 8,
-        backgroundColor: "#2e7d32",
+        backgroundColor: "#111",
     },
     solidButtonText: {
         color: "#fff",
@@ -952,7 +976,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 10,
         marginRight: 8,
         marginBottom: 8,
-        backgroundColor: "#d32f2f",
+        backgroundColor: "#3a3a3a",
     },
     solidDangerButtonText: {
         color: "#fff",

@@ -1,6 +1,8 @@
 import React, { useContext } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { createMaterialTopTabNavigator } from "@react-navigation/material-top-tabs";
+import { useSelector } from "react-redux";
+import Toast from "react-native-toast-message";
 import Checkout from "../Screens/Checkout/Checkout";
 import Payment from "../Screens/Checkout/Payment";
 import Confirm from "../Screens/Checkout/Confirm";
@@ -16,11 +18,21 @@ const AdminCheckoutBlocked = () => (
 );
 
 function MyTabs() {
+    const cartItems = useSelector((state) => state.cartItems || []);
+
+    const hasCartItems = Array.isArray(cartItems) && cartItems.length > 0;
+
+    const ensureShippingFirst = (navigation) => {
+        Toast.show({ topOffset: 60, type: "error", text1: "Complete Shipping first" });
+        navigation.navigate("Shipping");
+    };
+
     return (
         <Tab.Navigator
             screenOptions={{
                 tabBarActiveTintColor: "#111",
                 tabBarInactiveTintColor: "#8d8d8d",
+                swipeEnabled: false,
                 tabBarIndicatorStyle: {
                     backgroundColor: "#111",
                     height: 3,
@@ -42,8 +54,34 @@ function MyTabs() {
             }}
         >
             <Tab.Screen name="Shipping" component={Checkout} />
-            <Tab.Screen name="Payment" component={Payment} />
-            <Tab.Screen name="Confirm" component={Confirm} />
+            <Tab.Screen
+                name="Payment"
+                component={Payment}
+                listeners={({ navigation, route }) => ({
+                    tabPress: (event) => {
+                        const hasOrderPayload = !!route?.params?.order?.orderItems?.length;
+                        if (!hasCartItems || !hasOrderPayload) {
+                            event.preventDefault();
+                            ensureShippingFirst(navigation);
+                        }
+                    },
+                })}
+            />
+            <Tab.Screen
+                name="Confirm"
+                component={Confirm}
+                listeners={({ navigation, route }) => ({
+                    tabPress: (event) => {
+                        const hasOrderPayload = !!route?.params?.order?.orderItems?.length;
+                        const hasPaymentPayload = !!route?.params?.paymentMethod;
+                        if (!hasCartItems || !hasOrderPayload || !hasPaymentPayload) {
+                            event.preventDefault();
+                            Toast.show({ topOffset: 60, type: "error", text1: "Complete Shipping and Payment first" });
+                            navigation.navigate("Shipping");
+                        }
+                    },
+                })}
+            />
         </Tab.Navigator>
     );
 }

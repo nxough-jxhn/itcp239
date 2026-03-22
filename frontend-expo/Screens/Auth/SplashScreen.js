@@ -1,11 +1,11 @@
 /**
- * Splash screen: SnapShop logo on white. Shown when app opens.
+ * Splash screen: PeakPlay logo on white. Shown when app opens.
  * Flow: open app -> splash logo -> onboarding or login
  */
 import React, { useEffect } from "react";
-import { View, Text, StyleSheet } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { View, Text, StyleSheet, Image } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { APP_LOGO, APP_NAME } from "../../assets/common/branding";
 
 const ONBOARDING_KEY = "hasSeenOnboarding";
 
@@ -22,9 +22,9 @@ const SplashScreen = ({ navigation }) => {
     return (
         <View style={styles.container}>
             <View style={styles.logoBox}>
-                <Ionicons name="bag-handle-outline" size={48} color="#fff" />
+                <Image source={APP_LOGO} style={styles.logoImage} resizeMode="contain" />
             </View>
-            <Text style={styles.brandName}>SnapShop</Text>
+            <Text style={styles.brandName}>{APP_NAME}</Text>
         </View>
     );
 };
@@ -40,10 +40,16 @@ const styles = StyleSheet.create({
         width: 76,
         height: 76,
         borderRadius: 20,
-        backgroundColor: "#000",
+        backgroundColor: "#fff",
+        borderWidth: 1,
+        borderColor: "#e8e8e8",
         alignItems: "center",
         justifyContent: "center",
         marginBottom: 16,
+    },
+    logoImage: {
+        width: 52,
+        height: 52,
     },
     brandName: {
         fontSize: 24,

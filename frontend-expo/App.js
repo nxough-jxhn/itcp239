@@ -27,6 +27,10 @@ import {
 } from './assets/common/cartStorage';
 import { getNotificationTarget } from './assets/common/notificationRouting';
 import { getJwtToken } from './assets/common/authToken';
+import {
+  upsertNotification,
+  markNotificationRead,
+} from './assets/common/notificationCenterStorage';
 
 // Resolve OAuth popup callback on web without loading expo-web-browser native module on Expo Go.
 if (Platform.OS === 'web') {
@@ -94,6 +98,41 @@ function CartPersistenceBridge() {
 function AppInner() {
   const context = useContext(AuthGlobal);
   const handledNotificationIds = useRef(new Set());
+  const pendingNotificationTargetRef = useRef(null);
+  const pendingNotificationAttemptsRef = useRef(0);
+  const isAuthenticated = context?.stateUser?.isAuthenticated === true;
+
+  const tryNavigateToTarget = React.useCallback((target, mergedParams) => {
+    if (!target || !navigationRef.isReady()) return false;
+
+    const rootRouteNames = navigationRef.getRootState?.()?.routeNames || [];
+
+    if (rootRouteNames.includes('PeakPlay')) {
+      navigationRef.navigate('PeakPlay', {
+        screen: target.tab,
+        params: {
+          screen: target.stackScreen,
+          params: mergedParams,
+        },
+      });
+      return true;
+    }
+
+    if (rootRouteNames.includes(target.tab)) {
+      navigationRef.navigate(target.tab, {
+        screen: target.stackScreen,
+        params: mergedParams,
+      });
+      return true;
+    }
+
+    if (rootRouteNames.includes(target.stackScreen)) {
+      navigationRef.navigate(target.stackScreen, mergedParams);
+      return true;
+    }
+
+    return false;
+  }, []);
 
   useEffect(() => {
     if (Platform.OS === 'android') {
@@ -173,6 +212,21 @@ function AppInner() {
   }, [context?.stateUser?.isAuthenticated]);
 
   useEffect(() => {
+    const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
+      const identifier = notification?.request?.identifier;
+      const content = notification?.request?.content || {};
+
+      if (!identifier) return;
+
+      upsertNotification({
+        id: identifier,
+        title: content.title || 'Notification',
+        body: content.body || '',
+        date: new Date(notification?.date || Date.now()).toISOString(),
+        data: content.data || {},
+      }).catch(() => {});
+    });
+
     const handleNotificationResponse = (response) => {
       if (!response || !navigationRef.isReady()) return;
 
@@ -185,6 +239,17 @@ function AppInner() {
       }
 
       const content = response.notification?.request?.content || {};
+      if (notificationId) {
+        upsertNotification({
+          id: notificationId,
+          title: content.title || 'Notification',
+          body: content.body || '',
+          date: new Date(response.notification?.date || Date.now()).toISOString(),
+          data: content.data || {},
+        }).catch(() => {});
+        markNotificationRead(notificationId, new Date()).catch(() => {});
+      }
+
       const data = content.data || {};
       const isAdmin = context?.stateUser?.user?.isAdmin === true;
       const target = getNotificationTarget({ data, isAdmin });
@@ -204,13 +269,11 @@ function AppInner() {
           ? { ...target.params, ...notificationParams }
           : target.params;
 
-      navigationRef.navigate('PeakPlay', {
-        screen: target.tab,
-        params: {
-          screen: target.stackScreen,
-          params: mergedParams,
-        },
-      });
+      const navigated = tryNavigateToTarget(target, mergedParams);
+      if (!navigated) {
+        pendingNotificationTargetRef.current = { target, mergedParams };
+        pendingNotificationAttemptsRef.current = 0;
+      }
     };
 
     const subscription = Notifications.addNotificationResponseReceivedListener(
@@ -226,11 +289,45 @@ function AppInner() {
       .catch(() => {});
 
     return () => {
+      receivedSubscription.remove();
       subscription.remove();
     };
-  }, [context?.stateUser?.user?.isAdmin]);
+  }, [context?.stateUser?.user?.isAdmin, tryNavigateToTarget]);
 
-  const isAuthenticated = context?.stateUser?.isAuthenticated === true;
+  useEffect(() => {
+    if (!isAuthenticated) {
+      pendingNotificationTargetRef.current = null;
+      pendingNotificationAttemptsRef.current = 0;
+      return;
+    }
+
+    const interval = setInterval(() => {
+      if (!navigationRef.isReady()) return;
+      const pending = pendingNotificationTargetRef.current;
+      if (!pending) return;
+
+      const success = tryNavigateToTarget(pending.target, pending.mergedParams);
+      if (success) {
+        pendingNotificationTargetRef.current = null;
+        pendingNotificationAttemptsRef.current = 0;
+        return;
+      }
+
+      pendingNotificationAttemptsRef.current += 1;
+      if (pendingNotificationAttemptsRef.current >= 10) {
+        pendingNotificationTargetRef.current = null;
+        pendingNotificationAttemptsRef.current = 0;
+        Toast.show({
+          topOffset: 60,
+          type: 'error',
+          text1: 'Unable to open order details from notification',
+          text2: 'Please open My Orders and select your updated order.',
+        });
+      }
+    }, 350);
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, tryNavigateToTarget]);
 
   return (
     <Provider store={store}>

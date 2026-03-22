@@ -1,7 +1,7 @@
 import { jwtDecode } from 'jwt-decode';
 import Toast from 'react-native-toast-message';
 import baseURL from '../../assets/common/baseurl';
-import { setJwtToken, removeJwtToken } from '../../assets/common/authToken';
+import { getJwtToken, setJwtToken, removeJwtToken } from '../../assets/common/authToken';
 
 export const SET_CURRENT_USER = 'SET_CURRENT_USER';
 
@@ -88,25 +88,36 @@ export const loginWithGoogle = async (promptAsync, dispatch, options = {}) => {
 };
 
 export const loginWithGoogleIdToken = async (idToken, dispatch) => {
+  let timeoutId;
   try {
     if (!idToken) return;
+
+    const controller = new AbortController();
+    timeoutId = setTimeout(() => controller.abort(), 12000);
 
     const res = await fetch(`${baseURL}users/auth/google`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken }),
+      signal: controller.signal,
     });
     console.log('[loginWithGoogleIdToken] backend status:', res.status);
     await handleSocialAuthResponse(res, dispatch);
   } catch (err) {
     console.error('[loginWithGoogleIdToken]', err);
+
+    const isTimeout = String(err?.name || '').toLowerCase() === 'aborterror';
     Toast.show({
       topOffset: 60,
       type: 'error',
       text1: 'Google sign-in failed',
-      text2: err.message,
+      text2: isTimeout
+        ? 'Request timed out. Check backend server and base URL connection.'
+        : err.message,
     });
     dispatch(setCurrentUser({}));
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 };
 
@@ -154,7 +165,24 @@ export const getUserProfile = (id) => {
 };
 
 export const logoutUser = (dispatch) => {
-  removeJwtToken();
+  (async () => {
+    try {
+      const jwt = await getJwtToken();
+      if (jwt) {
+        await fetch(`${baseURL}users/push-token`, {
+          method: 'DELETE',
+          headers: {
+            Authorization: `Bearer ${jwt}`,
+          },
+        });
+      }
+    } catch (_err) {
+      // Logout should continue even if push token cleanup fails.
+    }
+
+    removeJwtToken();
+  })();
+
   dispatch(setCurrentUser({}));
 };
 

@@ -97,17 +97,17 @@ const DrawerContent = (props) => {
     const productsChildren = [
         {
             key: "Products",
-            label: "Prod CRUD",
+            label: "Product Management",
             onPress: () => navigation.navigate("PeakPlay", { screen: "Admin", params: { screen: "Products" } }),
         },
         {
             key: "Categories",
-            label: "Category CRUD",
+            label: "Category Management",
             onPress: () => navigation.navigate("PeakPlay", { screen: "Admin", params: { screen: "Categories" } }),
         },
         {
             key: "Promo Broadcast",
-            label: "Promo Voucher",
+            label: "Promo % Voucher Management",
             onPress: () => navigation.navigate("PeakPlay", { screen: "Admin", params: { screen: "Promo Broadcast" } }),
         },
     ];

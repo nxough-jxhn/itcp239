@@ -9,13 +9,15 @@ const getItemId = (item) => String(item?.id || item?._id || item?.product || "")
 
 const getMaxStock = (item) => {
     const stock = Number(item?.countInStock);
-    if (!Number.isFinite(stock) || stock <= 0) return null;
+    if (!Number.isFinite(stock)) return null;
+    if (stock <= 0) return 0;
     return Math.floor(stock);
 };
 
 const clampQuantityToStock = (item, quantity) => {
     const minQty = Math.max(1, Number(quantity || 1));
     const maxStock = getMaxStock(item);
+    if (maxStock === 0) return 0;
     if (maxStock === null) return minQty;
     return Math.min(minQty, maxStock);
 };
@@ -28,6 +30,7 @@ const normalizeItems = (items = []) => {
         if (!id) return;
 
         const quantity = clampQuantityToStock(raw, raw?.quantity || 1);
+        if (quantity <= 0) return;
         if (!map.has(id)) {
             map.set(id, { ...raw, quantity, id });
             return;

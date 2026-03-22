@@ -4,12 +4,14 @@ const fs = require("fs");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
+const { OAuth2Client } = require("google-auth-library");
 
 const config = require("../config");
 const authJwt = require("../middleware/authJwt");
 const User = require("../models/User");
 
 const router = express.Router();
+const googleAuthClient = new OAuth2Client();
 
 const uploadPath = path.resolve(process.cwd(), config.uploadDir);
 fs.mkdirSync(uploadPath, { recursive: true });
@@ -93,22 +95,26 @@ router.post("/auth/google", async (req, res) => {
         .json({ message: "Google sign-in is not configured. Set GOOGLE_CLIENT_ID or GOOGLE_CLIENT_IDS in .env" });
     }
 
-    const url = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`;
-    const resp = await fetch(url);
-    const data = await resp.json();
-    console.log("[auth/google] tokeninfo status:", resp.status);
-    console.log("[auth/google] token aud:", data?.aud);
-
     const allowedAudiences = config.googleClientIds;
-    console.log("[auth/google] allowed audiences:", allowedAudiences);
-    if (data.error || !allowedAudiences.includes(data.aud)) {
-      console.log("[auth/google] token rejected. error:", data?.error || "audience mismatch");
+    const ticket = await googleAuthClient.verifyIdToken({
+      idToken,
+      audience: allowedAudiences,
+    });
+    const googlePayload = ticket.getPayload() || {};
+
+    console.log("[auth/google] token aud:", googlePayload?.aud);
+    if (!googlePayload?.aud || !allowedAudiences.includes(String(googlePayload.aud))) {
+      console.log("[auth/google] token rejected. reason: audience mismatch");
       return res.status(401).json({ message: "Invalid Google token" });
     }
 
-    const email = (data.email || "").trim().toLowerCase();
-    const name = (data.name || data.email || "User").trim();
-    const image = data.picture || "";
+    const email = String(googlePayload.email || "").trim().toLowerCase();
+    const name = String(googlePayload.name || googlePayload.email || "User").trim();
+    const image = String(googlePayload.picture || "");
+
+    if (!email) {
+      return res.status(401).json({ message: "Invalid Google token (missing email)" });
+    }
 
     let user = await User.findOne({ email }).lean();
     if (!user) {
@@ -185,6 +191,23 @@ router.post("/login", async (req, res) => {
     return res.status(200).json({ token, user: payload });
   } catch (_error) {
     return res.status(500).json({ message: "Failed to login" });
+  }
+});
+
+// GET /users — admin-only users list for dashboard/admin tools
+router.get("/", authJwt, async (req, res) => {
+  try {
+    if (!req.user?.isAdmin) {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const users = await User.find({})
+      .sort({ createdAt: -1 })
+      .select("name email phone image isAdmin isVerified deliveryAddress1 deliveryAddress2 deliveryCity deliveryZip deliveryCountry deliveryLocation createdAt updatedAt");
+
+    return res.status(200).json(users.map((user) => user.toJSON()));
+  } catch (_error) {
+    return res.status(500).json({ message: "Failed to load users" });
   }
 });
 
@@ -306,16 +329,76 @@ router.post("/push-token", authJwt, async (req, res) => {
       return res.status(400).json({ message: "Push token is required" });
     }
 
-    const tokenType = type || (token.startsWith("ExponentPushToken") ? "expo" : "fcm");
-    console.log(`[POST /push-token] Saving ${tokenType} push token for user ${req.user.userId}: ${token.substring(0, 30)}...`);
+    const normalizedToken = String(token).trim();
+    const tokenType = type || (normalizedToken.startsWith("ExponentPushToken") ? "expo" : "fcm");
+    const tokenPreview = `${normalizedToken.substring(0, 18)}...`;
+    const currentUser = await User.findById(req.user.userId, "email name pushToken").lean();
+    const previousOwnerRows = await User.find(
+      { _id: { $ne: req.user.userId }, pushToken: normalizedToken },
+      "email name"
+    ).lean();
+
+    console.log(
+      `[POST /push-token] user=${req.user.userId} email=${currentUser?.email || "unknown"} tokenType=${tokenType} token=${tokenPreview}`
+    );
+    console.log(
+      `[POST /push-token] existing token on current user: ${String(currentUser?.pushToken || "").substring(0, 18) || "<none>"}`
+    );
+
+    if (previousOwnerRows.length > 0) {
+      console.log(
+        `[POST /push-token] removing token ownership from ${previousOwnerRows.length} previous account(s): ${previousOwnerRows
+          .map((row) => `${row.email || row._id}`)
+          .join(", ")}`
+      );
+    }
+
+    // A device token should be associated with one active account at a time.
+    const detachResult = await User.updateMany(
+      { _id: { $ne: req.user.userId }, pushToken: normalizedToken },
+      { $set: { pushToken: "", pushTokenType: "" } }
+    );
+    if ((detachResult?.modifiedCount || 0) > 0) {
+      console.log(`[POST /push-token] detached token from ${detachResult.modifiedCount} account(s)`);
+    }
+
     await User.findByIdAndUpdate(req.user.userId, {
-      pushToken: String(token),
+      pushToken: normalizedToken,
       pushTokenType: tokenType,
     });
+
+    const ownersAfter = await User.countDocuments({ pushToken: normalizedToken });
+    if (ownersAfter > 1) {
+      console.warn(`[POST /push-token] WARNING token still has ${ownersAfter} owner records`);
+    } else {
+      console.log(`[POST /push-token] ownership check passed; ownerCount=${ownersAfter}`);
+    }
+
     return res.status(200).json({ success: true });
   } catch (error) {
     console.error('[POST /push-token] Error:', error.message);
     return res.status(500).json({ message: "Failed to save push token" });
+  }
+});
+
+// DELETE /users/push-token — clear current user's push token (used on logout)
+router.delete("/push-token", authJwt, async (req, res) => {
+  try {
+    const currentUser = await User.findById(req.user.userId, "email name pushToken pushTokenType").lean();
+    const oldTokenPreview = String(currentUser?.pushToken || "").substring(0, 18) || "<none>";
+
+    await User.findByIdAndUpdate(req.user.userId, {
+      pushToken: "",
+      pushTokenType: "",
+    });
+
+    console.log(
+      `[DELETE /push-token] cleared token for user=${req.user.userId} email=${currentUser?.email || "unknown"} oldToken=${oldTokenPreview} type=${currentUser?.pushTokenType || ""}`
+    );
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('[DELETE /push-token] Error:', error.message);
+    return res.status(500).json({ message: "Failed to clear push token" });
   }
 });
 

@@ -42,17 +42,21 @@ const upload = multer({
 });
 
 const uploadReviewImages = upload.array("images", 3);
+const uploadProductImages = upload.fields([
+  { name: "image", maxCount: 1 },
+  { name: "images", maxCount: 8 },
+]);
 
 const STOCK_LOW_THRESHOLD = 10;
 
-async function notifyAdmins(title, body) {
+async function notifyAdmins(title, body, data = {}) {
   try {
     const admins = await User.find({ isAdmin: true, pushToken: { $ne: "" } }, "pushToken pushTokenType").lean();
     const tokens = admins
       .filter((a) => a.pushToken)
       .map((a) => ({ token: a.pushToken, type: a.pushTokenType || "fcm" }));
     console.log(`[notifyAdmins] Sending to ${tokens.length} admin(s): "${title}"`);
-    await sendToTokens(tokens, { title, body });
+    await sendToTokens(tokens, { title, body, data });
   } catch (error) {
     console.error('[notifyAdmins] Error:', error.message);
   }
@@ -170,7 +174,11 @@ async function updateStockAlerts(product) {
         threshold: STOCK_LOW_THRESHOLD,
         countInStock: count,
       });
-      await notifyAdmins("Out of stock", `${productName} is out of stock.`);
+      await notifyAdmins("Out of stock", `${productName} is out of stock.`, {
+        route: "stock-alert",
+        type: "stock",
+        productId: String(productId),
+      });
     } else if (existingOut.countInStock !== count) {
       existingOut.countInStock = count;
       await existingOut.save();
@@ -191,7 +199,11 @@ async function updateStockAlerts(product) {
         threshold: STOCK_LOW_THRESHOLD,
         countInStock: count,
       });
-      await notifyAdmins("Low stock", `${productName} is low on stock (${count}).`);
+      await notifyAdmins("Low stock", `${productName} is low on stock (${count}).`, {
+        route: "stock-alert",
+        type: "stock",
+        productId: String(productId),
+      });
     } else if (existingLow.countInStock !== count) {
       existingLow.countInStock = count;
       await existingLow.save();
@@ -214,6 +226,34 @@ function parseBoolean(value, fallback = false) {
   if (value === undefined || value === null) return fallback;
   if (typeof value === "boolean") return value;
   return String(value).toLowerCase() === "true";
+}
+
+function parseExistingImages(input) {
+  if (input === undefined || input === null) return [];
+  let parsed = [];
+
+  if (Array.isArray(input)) {
+    parsed = input;
+  } else if (typeof input === "string") {
+    try {
+      parsed = JSON.parse(input);
+    } catch {
+      parsed = [];
+    }
+  }
+
+  return (Array.isArray(parsed) ? parsed : [])
+    .map((img) => String(img || "").trim())
+    .filter(Boolean);
+}
+
+function getUploadedProductImages(req) {
+  const single = req.files?.image || [];
+  const multi = req.files?.images || [];
+  return [...single, ...multi]
+    .map((file) => buildImageUrl(req, file?.filename))
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 async function refreshProductReviewStats(productId) {
@@ -312,7 +352,7 @@ async function loadSoldCountsForProductIds(productIds) {
   const soldRows = await Order.aggregate([
     {
       $match: {
-        status: { $ne: "cancelled" },
+        status: "delivered",
         "orderItems.product": { $in: ids },
       },
     },
@@ -380,6 +420,28 @@ router.get("/", async (_req, res) => {
     return res.status(200).json(withSoldCounts);
   } catch (_error) {
     return res.status(500).json({ message: "Failed to load products" });
+  }
+});
+
+// GET /products/reviews/latest?limit=3 — admin latest review feed for dashboard
+router.get("/reviews/latest", authJwt, async (req, res) => {
+  try {
+    if (!req.user?.isAdmin) {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+
+    const parsedLimit = Number(req.query.limit || 3);
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 10) : 3;
+
+    const reviews = await Review.find({})
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .populate("user", "id name image")
+      .populate("product", "id name image category");
+
+    return res.status(200).json(reviews.map((review) => review.toJSON()));
+  } catch (_error) {
+    return res.status(500).json({ message: "Failed to load latest reviews" });
   }
 });
 
@@ -570,7 +632,7 @@ router.put("/:id/reviews/:reviewId", authJwt, uploadReviewImages, async (req, re
 });
 
 // POST /products — admin only, multipart
-router.post("/", authJwt, upload.single("image"), async (req, res) => {
+router.post("/", authJwt, uploadProductImages, async (req, res) => {
   try {
     if (!req.user?.isAdmin) {
       return res.status(403).json({ message: "Admin access required" });
@@ -580,13 +642,15 @@ router.post("/", authJwt, upload.single("image"), async (req, res) => {
     if (!name || !brand || !price || !category || countInStock === undefined) {
       return res.status(400).json({ message: "name, brand, price, category and countInStock are required" });
     }
-    const image = req.file ? buildImageUrl(req, req.file.filename) : "";
+    const uploadedImages = getUploadedProductImages(req);
+    const image = uploadedImages[0] || "";
     const product = await Product.create({
       name, brand, price: Number(price), description, richDescription,
       category, countInStock: Number(countInStock),
       rating: Number(rating || 0), numReviews: Number(numReviews || 0),
       isFeatured: isFeatured === "true" || isFeatured === true,
       image,
+      images: uploadedImages,
     });
     const populated = await product.populate("category", "id name color");
     await updateStockAlerts(product);
@@ -597,7 +661,7 @@ router.post("/", authJwt, upload.single("image"), async (req, res) => {
 });
 
 // PUT /products/:id — admin only, multipart
-router.put("/:id", authJwt, upload.single("image"), async (req, res) => {
+router.put("/:id", authJwt, uploadProductImages, async (req, res) => {
   try {
     if (!req.user?.isAdmin) {
       return res.status(403).json({ message: "Admin access required" });
@@ -607,7 +671,10 @@ router.put("/:id", authJwt, upload.single("image"), async (req, res) => {
 
     const { name, brand, price, description, richDescription, category,
             countInStock, rating, numReviews, isFeatured } = req.body;
-    const image = req.file ? buildImageUrl(req, req.file.filename) : existing.image;
+        const uploadedImages = getUploadedProductImages(req);
+        const existingImages = parseExistingImages(req.body.existingImages);
+        const mergedImages = [...existingImages, ...uploadedImages].slice(0, 8);
+        const image = mergedImages[0] || existing.image;
 
     const updated = await Product.findByIdAndUpdate(
       req.params.id,
@@ -623,6 +690,7 @@ router.put("/:id", authJwt, upload.single("image"), async (req, res) => {
         numReviews: numReviews !== undefined ? Number(numReviews) : existing.numReviews,
         isFeatured: isFeatured !== undefined ? (isFeatured === "true" || isFeatured === true) : existing.isFeatured,
         image,
+        images: mergedImages.length > 0 ? mergedImages : existing.images,
       },
       { new: true }
     ).populate("category", "id name color");

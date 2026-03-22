@@ -14,6 +14,7 @@ import { useNavigation } from "@react-navigation/native";
 import EasyButton from "../../Shared/StyledComponents/EasyButton";
 
 var { width } = Dimensions.get("window");
+const FALLBACK_IMAGE = "https://cdn.pixabay.com/photo/2012/04/01/17/29/box-23649_960_720.png";
 
 const ListItem = ({ item, index, deleteProduct, isDeleting = false }) => {
     const [modalVisible, setModalVisible] = useState(false);
@@ -70,23 +71,23 @@ const ListItem = ({ item, index, deleteProduct, isDeleting = false }) => {
                 style={[
                     styles.container,
                     {
-                        backgroundColor: index % 2 === 0 ? "white" : "gainsboro",
+                        backgroundColor: index % 2 === 0 ? "#fff" : "#f2f2f2",
                     },
                 ]}
             >
                 <Image
-                    source={item.image ? { uri: item.image } : null}
-                    resizeMode="contain"
+                    source={{ uri: item.image || FALLBACK_IMAGE }}
+                    resizeMode="cover"
                     style={styles.image}
                 />
-                <Text style={styles.item}>{item.brand}</Text>
+                <Text style={styles.item} numberOfLines={1}>{item.brand}</Text>
                 <Text style={styles.item} numberOfLines={1} ellipsizeMode="tail">
                     {item.name || ""}
                 </Text>
                 <Text style={styles.item} numberOfLines={1} ellipsizeMode="tail">
                     {item.category ? item.category.name : ""}
                 </Text>
-                <Text style={styles.item}>$ {item.price}</Text>
+                <Text style={styles.item}>$ {Number(item.price || 0).toFixed(2)}</Text>
                 <View style={styles.actions}>
                     <TouchableOpacity
                         style={styles.actionButton}
@@ -113,17 +114,23 @@ const ListItem = ({ item, index, deleteProduct, isDeleting = false }) => {
 const styles = StyleSheet.create({
     container: {
         flexDirection: "row",
-        padding: 5,
+        alignItems: "center",
+        paddingVertical: 6,
+        paddingHorizontal: 6,
         width: width,
+        borderBottomWidth: 1,
+        borderBottomColor: "#e7e7e7",
     },
     image: {
-        borderRadius: 50,
+        borderRadius: 8,
         width: width / 6,
-        height: 20,
+        height: 46,
         margin: 2,
+        backgroundColor: "#e4e4e4",
     },
     item: {
-        flexWrap: "wrap",
+        color: "#1e1e1e",
+        fontSize: 12,
         margin: 3,
         width: width / 6,
     },
@@ -133,8 +140,15 @@ const styles = StyleSheet.create({
         marginLeft: 4,
     },
     actionButton: {
-        paddingHorizontal: 6,
-        paddingVertical: 2,
+        width: 30,
+        height: 30,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: "#d4d4d4",
+        backgroundColor: "#f4f4f4",
+        alignItems: "center",
+        justifyContent: "center",
+        marginHorizontal: 3,
     },
     centeredView: {
         flex: 1,
@@ -144,15 +158,12 @@ const styles = StyleSheet.create({
     },
     modalView: {
         margin: 20,
-        backgroundColor: "white",
-        borderRadius: 20,
-        padding: 35,
+        backgroundColor: "#fff",
+        borderRadius: 14,
+        borderWidth: 1,
+        borderColor: "#ddd",
+        padding: 20,
         alignItems: "center",
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-        elevation: 5,
     },
     closeButton: {
         alignSelf: "flex-end",
@@ -161,7 +172,7 @@ const styles = StyleSheet.create({
         right: 10,
     },
     textStyle: {
-        color: "white",
+        color: "#fff",
         fontWeight: "bold",
     },
 });

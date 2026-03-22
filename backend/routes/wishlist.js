@@ -63,6 +63,7 @@ async function loadSoldCountsForProductIds(productIds) {
     { $unwind: "$orderItems" },
     {
       $match: {
+        status: "delivered",
         "orderItems.product": { $in: ids },
       },
     },

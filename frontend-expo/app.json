@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "frontend-expo",
+    "name": "PeakPlay",
     "slug": "frontend-expo",
     "scheme": [
       "com.peakplay.itcp239.dev",
@@ -13,7 +13,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -23,6 +23,11 @@
     "android": {
       "package": "com.peakplay.itcp239.dev",
       "googleServicesFile": "./google-services.json",
+      "usesCleartextTraffic": true,
+      "notification": {
+        "icon": "./assets/adaptive-icon.png",
+        "color": "#111111"
+      },
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -33,6 +38,7 @@
       "favicon": "./assets/favicon.png"
     },
     "extra": {
+      "apiUrl": "http://192.168.1.8:4000/api/v1",
       "eas": {
         "projectId": "6f747b51-b33e-4c6e-9d11-89bf760ec81a"
       }

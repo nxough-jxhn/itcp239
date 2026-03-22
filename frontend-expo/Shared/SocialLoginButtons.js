@@ -53,7 +53,7 @@ function buildRedirectUri() {
   return undefined;
 }
 
-function GoogleLoginButton({ dispatch, variant }) {
+function GoogleLoginButton({ dispatch, variant, label }) {
   const redirectUri = buildRedirectUri();
 
   console.log(
@@ -119,19 +119,21 @@ function GoogleLoginButton({ dispatch, variant }) {
       <Text
         style={[styles.socialButtonText, isOutline && styles.outlineButtonText]}
       >
-        Continue with Google
+        {label || 'Continue with Google'}
       </Text>
     </TouchableOpacity>
   );
 }
 
-export default function SocialLoginButtons({ dispatch, variant }) {
+export default function SocialLoginButtons({ dispatch, variant, shortLabel = false }) {
   if (!GOOGLE_WEB_CLIENT_ID) return null;
+
+  const label = shortLabel ? 'Google' : 'Continue with Google';
 
   return (
     <View style={styles.socialSection}>
       <View style={styles.socialButtons}>
-        <GoogleLoginButton dispatch={dispatch} variant={variant} />
+        <GoogleLoginButton dispatch={dispatch} variant={variant} label={label} />
       </View>
       {IS_EXPO_GO_NATIVE ? (
         <Text style={styles.helperText}>

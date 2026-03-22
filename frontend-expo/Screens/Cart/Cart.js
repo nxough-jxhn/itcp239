@@ -231,6 +231,7 @@ const Cart = () => {
                 <Button
                     mode="contained"
                     style={styles.checkoutBtn}
+                    labelStyle={styles.checkoutBtnLabel}
                     onPress={() => navigation.navigate("Checkout")}
                     disabled={cartItems.length === 0}
                 >
@@ -452,6 +453,11 @@ const styles = StyleSheet.create({
         backgroundColor: "#0b0b0b",
         height: 48,
         justifyContent: "center",
+    },
+    checkoutBtnLabel: {
+        color: "#fff",
+        fontSize: 15,
+        fontWeight: "700",
     },
 });
 

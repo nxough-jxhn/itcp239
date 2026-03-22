@@ -20,6 +20,7 @@ import { fetchProductById } from "../../Redux/Actions/productActions";
 import { fetchReviewsByProduct } from "../../Redux/Actions/reviewActions";
 import { toggleWishlistProduct, fetchWishlistIds } from "../../Redux/Actions/wishlistActions";
 import { sanitizeProfanity } from "../../assets/common/profanityFilter";
+import { getProductPricing } from "../../assets/common/productPricing";
 import AuthGlobal from "../../Context/Store/AuthGlobal";
 
 const FALLBACK_IMAGE = "https://cdn.pixabay.com/photo/2012/04/01/17/29/box-23649_960_720.png";
@@ -70,15 +71,17 @@ const SingleProduct = ({ route }) => {
         const key = String(productId || "");
         return state.reviews?.byProductId?.[key] || EMPTY_REVIEWS;
     });
+    const productLoading = useSelector((state) => state.products?.loadingDetails === true);
+    const productError = useSelector((state) => state.products?.error || "");
+    const reviewsLoading = useSelector((state) => state.reviews?.loadingByProductId?.[String(productId || "")] === true);
+    const reviewsError = useSelector((state) => state.reviews?.errorByProductId?.[String(productId || "")] || "");
 
     const wishlistIds = useSelector((state) => state.wishlist?.ids || []);
     const isWishlisted = wishlistIds.includes(String(productId || ""));
 
-    const originalPrice = Number(product?.price || 0);
-    const salePrice = Number.isFinite(Number(product?.discountedPrice))
-        ? Number(product?.discountedPrice)
-        : originalPrice;
-    const displayPrice = salePrice > 0 ? salePrice : originalPrice;
+    const pricing = getProductPricing(product);
+    const originalPrice = pricing.originalPrice;
+    const displayPrice = pricing.displayPrice > 0 ? pricing.displayPrice : pricing.originalPrice;
 
     const galleryImages = useMemo(() => {
         const images = [];
@@ -125,18 +128,23 @@ const SingleProduct = ({ route }) => {
     const onRefresh = async () => {
         if (!productId) return;
         setRefreshing(true);
-        await Promise.all([
-            dispatch(fetchProductById(productId)),
-            dispatch(
-                fetchReviewsByProduct({
-                    productId,
-                    sort: sortBy,
-                    rating: ratingFilter,
-                    withMedia,
-                })
-            ),
-        ]);
-        setRefreshing(false);
+        try {
+            await Promise.all([
+                dispatch(fetchProductById(productId)),
+                dispatch(
+                    fetchReviewsByProduct({
+                        productId,
+                        sort: sortBy,
+                        rating: ratingFilter,
+                        withMedia,
+                    })
+                ),
+            ]);
+        } catch (_error) {
+            Toast.show({ topOffset: 60, type: "error", text1: "Could not refresh. Check your internet connection." });
+        } finally {
+            setRefreshing(false);
+        }
     };
 
     const onToggleWishlist = async () => {
@@ -158,6 +166,12 @@ const SingleProduct = ({ route }) => {
     };
 
     const onAddToCart = () => {
+        const inStock = Number(product?.countInStock || 0);
+        if (inStock <= 0) {
+            Toast.show({ topOffset: 60, type: "error", text1: "This product is currently unavailable" });
+            return;
+        }
+
         dispatch(
             addToCart({
                 ...product,
@@ -255,6 +269,9 @@ const SingleProduct = ({ route }) => {
                         <Text style={styles.categoryLabel}>Category</Text>
                     </View>
 
+                    {productLoading ? <Text style={styles.loadingInlineText}>Loading product details...</Text> : null}
+                    {!productLoading && productError ? <Text style={styles.reduxErrorText}>Failed to load product details.</Text> : null}
+
                     <View style={styles.priceStockRow}>
                         <View style={styles.ratingWrap}>
                             <Text style={styles.ratingStars}>★★★★☆</Text>
@@ -262,15 +279,24 @@ const SingleProduct = ({ route }) => {
                         </View>
                         <View style={styles.stockPriceRight}>
                             <Text style={styles.stockText}>Stock {Number(product?.countInStock || 0)}</Text>
+                            {pricing.isSale ? <Text style={styles.oldPriceMain}>${pricing.originalPrice.toFixed(2)}</Text> : null}
                             <Text style={styles.priceMain}>${displayPrice.toFixed(2)}</Text>
+                            {pricing.isSale ? (
+                                <Text style={styles.salePill}>{pricing.percentOff > 0 ? `${pricing.percentOff}% OFF` : "SALE"}</Text>
+                            ) : null}
                         </View>
                     </View>
 
                     <Text style={styles.description}>{product?.description || "product description"}</Text>
 
                     {!isAdmin ? (
-                        <TouchableOpacity style={styles.cartButton} onPress={onAddToCart}>
-                            <Text style={styles.cartButtonText}>Add to Cart</Text>
+                        <TouchableOpacity
+                            style={[styles.cartButton, Number(product?.countInStock || 0) <= 0 && styles.cartButtonDisabled]}
+                            onPress={onAddToCart}
+                        >
+                            <Text style={styles.cartButtonText}>
+                                {Number(product?.countInStock || 0) <= 0 ? "Unavailable" : "Add to Cart"}
+                            </Text>
                         </TouchableOpacity>
                     ) : null}
                 </View>
@@ -317,7 +343,11 @@ const SingleProduct = ({ route }) => {
 
                     <View style={styles.reviewDivider} />
 
-                    {reviews.length === 0 ? (
+                    {reviewsLoading ? (
+                        <Text style={styles.emptyReviews}>Loading reviews...</Text>
+                    ) : reviewsError ? (
+                        <Text style={styles.reduxErrorText}>Failed to load reviews. Pull down to retry.</Text>
+                    ) : reviews.length === 0 ? (
                         <Text style={styles.emptyReviews}>No reviews yet for selected filters.</Text>
                     ) : (
                         reviews.map((review) => {
@@ -573,11 +603,41 @@ const styles = StyleSheet.create({
         fontWeight: "800",
         fontFamily: "serif",
     },
+    oldPriceMain: {
+        fontSize: 12,
+        color: "#727272",
+        textDecorationLine: "line-through",
+        marginBottom: 1,
+    },
+    salePill: {
+        marginTop: 4,
+        alignSelf: "flex-end",
+        backgroundColor: "#111",
+        color: "#fff",
+        fontSize: 10,
+        fontWeight: "800",
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 12,
+        overflow: "hidden",
+    },
     description: {
         marginTop: 6,
         fontSize: 12,
         lineHeight: 17,
         color: "#333",
+    },
+    loadingInlineText: {
+        marginTop: 6,
+        color: "#555",
+        fontSize: 12,
+        fontWeight: "600",
+    },
+    reduxErrorText: {
+        marginTop: 6,
+        color: "#b02020",
+        fontSize: 12,
+        fontWeight: "700",
     },
     cartButton: {
         marginTop: 9,
@@ -586,6 +646,9 @@ const styles = StyleSheet.create({
         backgroundColor: "#0f0f0f",
         alignItems: "center",
         justifyContent: "center",
+    },
+    cartButtonDisabled: {
+        backgroundColor: "#9a9a9a",
     },
     cartButtonText: {
         color: "#fff",
@@ -682,12 +745,14 @@ const styles = StyleSheet.create({
     reviewHeaderRow: {
         flexDirection: "row",
         justifyContent: "space-between",
-        alignItems: "center",
+        alignItems: "flex-start",
         marginBottom: 4,
     },
     reviewAuthorRow: {
         flexDirection: "row",
         alignItems: "center",
+        flex: 1,
+        marginRight: 8,
     },
     reviewAuthor: {
         fontSize: 15,
@@ -706,9 +771,10 @@ const styles = StyleSheet.create({
         backgroundColor: "#fff",
     },
     reviewDate: {
-        fontSize: 12,
+        fontSize: 11,
         color: "#444",
         fontWeight: "600",
+        flexShrink: 0,
     },
     reviewRatingRow: {
         flexDirection: "row",
@@ -730,14 +796,14 @@ const styles = StyleSheet.create({
         fontSize: 14,
     },
     reviewMediaPane: {
-        width: 130,
+        width: 108,
         height: 96,
         borderRadius: 8,
         overflow: "hidden",
         alignSelf: "center",
     },
     reviewImage: {
-        width: 130,
+        width: 108,
         height: 96,
         borderRadius: 8,
         backgroundColor: "#eee",

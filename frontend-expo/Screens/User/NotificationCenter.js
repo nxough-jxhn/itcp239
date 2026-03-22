@@ -12,13 +12,18 @@ import * as Notifications from "expo-notifications";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import AuthGlobal from "../../Context/Store/AuthGlobal";
 import { getNotificationTarget } from "../../assets/common/notificationRouting";
+import {
+    clearStoredNotifications,
+    getStoredNotifications,
+    markNotificationRead,
+    upsertNotification,
+} from "../../assets/common/notificationCenterStorage";
 import AppPageHeader from "../../Shared/AppPageHeader";
 
 const NotificationCenter = () => {
     const navigation = useNavigation();
     const context = React.useContext(AuthGlobal);
     const [notifications, setNotifications] = useState([]);
-    const [openedNotifications, setOpenedNotifications] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
     const [typeFilter, setTypeFilter] = useState("all");
     const [readFilter, setReadFilter] = useState("all");
@@ -30,8 +35,8 @@ const NotificationCenter = () => {
         const title = String(item?.title || "").toLowerCase();
         const body = String(item?.body || "").toLowerCase();
 
-        if (type === "wishlist") return "wishlist";
         if (type === "voucher") return "voucher";
+        if (type === "wishlist") return "promo";
         if (type === "promo" || route === "notifications") return "promo";
         if (route === "order-details" || route === "admin-orders" || data.orderId) return "order";
         if (title.includes("stock") || body.includes("stock")) return "stock";
@@ -41,27 +46,24 @@ const NotificationCenter = () => {
     const loadNotifications = useCallback(async () => {
         setRefreshing(true);
         try {
-            // Get delivered notifications from the system tray
             const delivered = await Notifications.getPresentedNotificationsAsync();
-            const mapped = delivered.map((n) => ({
+            const deliveredMapped = delivered.map((n) => ({
                 id: n.request.identifier,
                 title: n.request.content.title || "Notification",
                 body: n.request.content.body || "",
                 date: n.date ? new Date(n.date).toISOString() : new Date().toISOString(),
                 data: n.request.content.data || {},
+                read: false,
             }));
-            // Sort newest first
-            mapped.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-            setNotifications(mapped);
-            setOpenedNotifications((prevOpened) => {
-                if (!Array.isArray(prevOpened) || prevOpened.length === 0) return prevOpened;
-                const activeIds = new Set(mapped.map((item) => item.id));
-                return prevOpened.filter((item) => !activeIds.has(item.id));
-            });
+
+            await Promise.all(deliveredMapped.map((item) => upsertNotification(item)));
+            const stored = await getStoredNotifications();
+            setNotifications(stored);
         } catch (err) {
             console.log("Error loading notifications:", err.message);
+        } finally {
+            setRefreshing(false);
         }
-        setRefreshing(false);
     }, []);
 
     useFocusEffect(
@@ -72,8 +74,8 @@ const NotificationCenter = () => {
 
     const clearAll = async () => {
         await Notifications.dismissAllNotificationsAsync();
+        await clearStoredNotifications();
         setNotifications([]);
-        setOpenedNotifications([]);
     };
 
     const matchesType = (item) => {
@@ -81,8 +83,8 @@ const NotificationCenter = () => {
         return getType(item) === typeFilter;
     };
 
-    const unreadItems = notifications.filter(matchesType);
-    const readItems = openedNotifications.filter(matchesType);
+    const unreadItems = notifications.filter((item) => !item?.read).filter(matchesType);
+    const readItems = notifications.filter((item) => item?.read).filter(matchesType);
 
     const showUnread = readFilter === "all" || readFilter === "unread";
     const showRead = readFilter === "all" || readFilter === "read";
@@ -93,46 +95,59 @@ const NotificationCenter = () => {
 
         if (shouldMarkOpened && item?.id) {
             Notifications.dismissNotificationAsync(item.id).catch(() => {});
-            setNotifications((prev) => prev.filter((entry) => entry.id !== item.id));
-            setOpenedNotifications((prev) => {
-                const filtered = prev.filter((entry) => entry.id !== item.id);
-                return [{ ...item, openedAt: new Date().toISOString() }, ...filtered];
-            });
+            markNotificationRead(item.id, new Date())
+                .then((updated) => setNotifications(updated))
+                .catch(() => {});
         }
 
         const data = item?.data || {};
         const isAdmin = context?.stateUser?.user?.isAdmin === true;
         const target = getNotificationTarget({ data, isAdmin });
+        const notificationPayload = {
+            notification: {
+                title: item.title,
+                body: item.body,
+                date: item.date,
+                data,
+            },
+        };
 
         if (!target) {
-            navigation.navigate("Notification Detail", {
-                notification: {
-                    title: item.title,
-                    body: item.body,
-                    date: item.date,
-                    data,
-                },
-            });
+            navigation.navigate("Notification Detail", notificationPayload);
             return;
         }
 
-        if (target.tab === "Admin") {
-            navigation.getParent()?.navigate("Admin", {
-                screen: target.stackScreen,
-                params: target.params,
-            });
-            return;
-        }
-
+        // Handle notification detail first so payload isn't lost by generic tab routing.
         if (target.stackScreen === "Notification Detail") {
             navigation.navigate("Notification Detail", {
-                notification: {
-                    title: item.title,
-                    body: item.body,
-                    date: item.date,
-                    data,
-                },
+                ...target.params,
+                ...notificationPayload,
             });
+            return;
+        }
+
+        if (target.tab === "Admin" || target.tab === "Home" || target.tab === "User") {
+            const tabNav = navigation.getParent?.();
+            const drawerNav = tabNav?.getParent?.();
+
+            if (tabNav?.navigate) {
+                tabNav.navigate(target.tab, {
+                    screen: target.stackScreen,
+                    params: target.params,
+                });
+            } else if (drawerNav?.navigate) {
+                drawerNav.navigate("PeakPlay", {
+                    screen: target.tab,
+                    params: {
+                        screen: target.stackScreen,
+                        params: target.params,
+                    },
+                });
+            } else if (target.tab === "User") {
+                navigation.navigate(target.stackScreen, target.params);
+            } else {
+                navigation.navigate(target.stackScreen, target.params);
+            }
             return;
         }
 
@@ -142,7 +157,7 @@ const NotificationCenter = () => {
     const renderItem = ({ item }) => (
         <TouchableOpacity style={styles.card} activeOpacity={0.8} onPress={() => openNotification(item)}>
             <View style={styles.iconContainer}>
-                <Ionicons name="notifications" size={24} color="#e91e63" />
+                <Ionicons name="notifications" size={21} color="#111" />
             </View>
             <View style={styles.textContainer}>
                 <Text style={styles.title}>{item.title}</Text>
@@ -162,7 +177,7 @@ const NotificationCenter = () => {
             onPress={() => openNotification(item, { markOpened: false })}
         >
             <View style={styles.iconContainer}>
-                <Ionicons name="mail-open-outline" size={22} color="#666" />
+                <Ionicons name="mail-open-outline" size={20} color="#4b4b4b" />
             </View>
             <View style={styles.textContainer}>
                 <Text style={[styles.title, styles.openedTitle]}>{item.title}</Text>
@@ -178,7 +193,7 @@ const NotificationCenter = () => {
     return (
         <View style={styles.container}>
             <AppPageHeader />
-            {(notifications.length > 0 || openedNotifications.length > 0) && (
+            {notifications.length > 0 && (
                 <TouchableOpacity style={styles.clearBtn} onPress={clearAll}>
                     <Text style={styles.clearText}>Clear All</Text>
                 </TouchableOpacity>
@@ -186,7 +201,7 @@ const NotificationCenter = () => {
             <View style={styles.filterSection}>
                 <Text style={styles.filterLabel}>Type</Text>
                 <View style={styles.filterRow}>
-                    {["all", "promo", "voucher", "wishlist", "order", "stock", "other"].map((type) => (
+                    {["all", "promo", "voucher", "order", "stock"].map((type) => (
                         <TouchableOpacity
                             key={type}
                             style={[styles.filterChip, typeFilter === type && styles.filterChipActive]}
@@ -201,14 +216,18 @@ const NotificationCenter = () => {
 
                 <Text style={styles.filterLabel}>Read State</Text>
                 <View style={styles.filterRow}>
-                    {["all", "unread", "read"].map((state) => (
+                    {[
+                        { key: "all", label: "ALL" },
+                        { key: "unread", label: "UNREAD" },
+                        { key: "read", label: "OPENED" },
+                    ].map((state) => (
                         <TouchableOpacity
-                            key={state}
-                            style={[styles.filterChip, readFilter === state && styles.filterChipActive]}
-                            onPress={() => setReadFilter(state)}
+                            key={state.key}
+                            style={[styles.filterChip, readFilter === state.key && styles.filterChipActive]}
+                            onPress={() => setReadFilter(state.key)}
                         >
-                            <Text style={[styles.filterChipText, readFilter === state && styles.filterChipTextActive]}>
-                                {state.toUpperCase()}
+                            <Text style={[styles.filterChipText, readFilter === state.key && styles.filterChipTextActive]}>
+                                {state.label}
                             </Text>
                         </TouchableOpacity>
                     ))}
@@ -239,7 +258,7 @@ const NotificationCenter = () => {
                     ListFooterComponent={
                         showRead && readItems.length > 0 ? (
                             <View style={styles.openedSection}>
-                                <Text style={styles.sectionTitle}>Recently Opened</Text>
+                                <Text style={styles.sectionTitle}>Opened Notifications</Text>
                                 <FlatList
                                     data={readItems}
                                     keyExtractor={(item) => `opened-${item.id}`}
@@ -256,7 +275,7 @@ const NotificationCenter = () => {
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: "#f5f5f5" },
+    container: { flex: 1, backgroundColor: "#f2f2f2" },
     filterSection: {
         paddingHorizontal: 12,
         paddingBottom: 8,
@@ -276,10 +295,10 @@ const styles = StyleSheet.create({
     },
     filterChip: {
         borderWidth: 1,
-        borderColor: "#ccc",
+        borderColor: "#cfcfcf",
         borderRadius: 16,
-        paddingVertical: 5,
-        paddingHorizontal: 10,
+        paddingVertical: 4,
+        paddingHorizontal: 9,
         marginRight: 8,
         marginBottom: 8,
         backgroundColor: "#fff",
@@ -290,7 +309,7 @@ const styles = StyleSheet.create({
     },
     filterChipText: {
         color: "#444",
-        fontSize: 11,
+        fontSize: 10,
         fontWeight: "700",
     },
     filterChipTextActive: {
@@ -301,7 +320,7 @@ const styles = StyleSheet.create({
         padding: 12,
         paddingBottom: 4,
     },
-    clearText: { color: "#e91e63", fontWeight: "600" },
+    clearText: { color: "#111", fontWeight: "600", fontSize: 12 },
     sectionTitle: {
         marginHorizontal: 12,
         marginTop: 6,
@@ -316,24 +335,26 @@ const styles = StyleSheet.create({
         backgroundColor: "#fff",
         marginHorizontal: 12,
         marginVertical: 4,
-        padding: 14,
-        borderRadius: 10,
-        elevation: 2,
+        padding: 12,
+        borderRadius: 11,
+        borderWidth: 1,
+        borderColor: "#dfdfdf",
+        elevation: 0,
     },
     openedCard: {
         opacity: 0.9,
         backgroundColor: "#fafafa",
     },
     iconContainer: {
-        width: 40,
+        width: 34,
         alignItems: "center",
         justifyContent: "center",
     },
     textContainer: { flex: 1 },
-    title: { fontSize: 15, fontWeight: "700", color: "#1a1a1a", marginBottom: 2 },
+    title: { fontSize: 14, fontWeight: "700", color: "#1a1a1a", marginBottom: 2 },
     openedTitle: { color: "#444" },
-    body: { fontSize: 13, color: "#333", marginBottom: 4 },
-    date: { fontSize: 11, color: "#666" },
+    body: { fontSize: 12, color: "#333", marginBottom: 4 },
+    date: { fontSize: 10, color: "#666" },
     openedSection: {
         marginTop: 8,
         paddingBottom: 10,
@@ -345,8 +366,8 @@ const styles = StyleSheet.create({
         marginTop: 120,
         paddingHorizontal: 40,
     },
-    emptyText: { fontSize: 18, fontWeight: "600", color: "#666", marginTop: 16 },
-    emptySubtext: { fontSize: 13, color: "#888", textAlign: "center", marginTop: 8 },
+    emptyText: { fontSize: 16, fontWeight: "600", color: "#666", marginTop: 16 },
+    emptySubtext: { fontSize: 12, color: "#888", textAlign: "center", marginTop: 8 },
 });
 
 export default NotificationCenter;

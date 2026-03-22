@@ -21,6 +21,7 @@ import AuthGlobal from "../../Context/Store/AuthGlobal";
 import { fetchProducts } from "../../Redux/Actions/productActions";
 import { fetchWishlistIds, toggleWishlistProduct } from "../../Redux/Actions/wishlistActions";
 import { addToCart } from "../../Redux/Actions/cartActions";
+import { getProductPricing } from "../../assets/common/productPricing";
 
 const REQUEST_TIMEOUT_MS = 8000;
 const FALLBACK_IMAGE = "https://cdn.pixabay.com/photo/2012/04/01/17/29/box-23649_960_720.png";
@@ -33,6 +34,8 @@ const CatalogSearch = () => {
     const isAdmin = context?.stateUser?.user?.isAdmin === true;
 
     const products = useSelector((state) => state.products?.list || []);
+    const productsLoading = useSelector((state) => state.products?.loadingList === true);
+    const productsError = useSelector((state) => state.products?.error || "");
     const wishlistIds = useSelector((state) => state.wishlist?.ids || []);
 
     const [categories, setCategories] = useState([]);
@@ -51,18 +54,9 @@ const CatalogSearch = () => {
 
     const getCategoryId = (product) => String(product?.category?.id || product?.category?._id || product?.category || "");
 
-    const getEffectivePrice = (product) => {
-        const discounted = Number(product?.discountedPrice);
-        if (Number.isFinite(discounted)) return discounted;
-        return Number(product?.price || 0);
-    };
+    const getEffectivePrice = (product) => getProductPricing(product).displayPrice;
 
-    const isOnSale = (product) => {
-        if (product?.hasActiveDiscount === true) return true;
-        const discounted = Number(product?.discountedPrice);
-        const original = Number(product?.price || 0);
-        return Number.isFinite(discounted) && discounted < original;
-    };
+    const isOnSale = (product) => getProductPricing(product).isSale;
 
     const loadData = useCallback(async () => {
         dispatch(fetchProducts());
@@ -202,7 +196,7 @@ const CatalogSearch = () => {
                     <Ionicons name="menu-outline" size={24} color="#000" />
                 </TouchableOpacity>
 
-                <Text style={styles.headerTitle}>SnapShop</Text>
+                <Text style={styles.headerTitle}>PeakPlay</Text>
 
                 <View style={styles.headerRightIcons}>
                     <TouchableOpacity style={styles.headerIconBtn} onPress={onPressSearch}>
@@ -322,12 +316,17 @@ const CatalogSearch = () => {
                 <View style={styles.sectionDivider} />
 
                 <View style={styles.productListWrap}>
-                    {filteredProducts.map((item, index) => {
+                    {productsLoading ? (
+                        <Text style={styles.emptyText}>Loading products...</Text>
+                    ) : productsError ? (
+                        <Text style={styles.reduxErrorText}>Failed to load products. Pull down to retry.</Text>
+                    ) : filteredProducts.map((item, index) => {
                         const productId = String(item?.id || item?._id || index);
                         const soldCount = Number(item?.soldCount || 0);
                         const rating = Number(item?.rating || 0);
                         const inStock = Number(item?.countInStock || 0);
                         const isWishlisted = wishlistIds.includes(productId);
+                        const pricing = getProductPricing(item);
 
                         return (
                             <TouchableOpacity
@@ -361,10 +360,14 @@ const CatalogSearch = () => {
 
                                     {!isAdmin ? (
                                         <TouchableOpacity
-                                            style={styles.iconSquareBtn}
+                                            style={[styles.iconSquareBtn, inStock <= 0 && styles.iconSquareBtnDisabled]}
                                             onPress={(event) => {
                                                 event?.stopPropagation?.();
-                                                dispatch(addToCart({ ...item, quantity: 1 }));
+                                                if (inStock <= 0) {
+                                                    Toast.show({ topOffset: 60, type: "error", text1: "Product is currently unavailable" });
+                                                    return;
+                                                }
+                                                dispatch(addToCart({ ...item, quantity: 1, price: pricing.displayPrice, originalPrice: pricing.originalPrice }));
                                                 Toast.show({ topOffset: 60, type: "success", text1: `${item?.name || "Product"} added to Cart` });
                                             }}
                                         >
@@ -377,6 +380,16 @@ const CatalogSearch = () => {
                                     <View style={styles.rowCard}>
                                         <View style={styles.rowImageWrap}>
                                             <Image source={{ uri: item?.image || FALLBACK_IMAGE }} style={styles.rowImage} resizeMode="cover" />
+                                            {pricing.isSale ? (
+                                                <View style={styles.rowSaleBadge}>
+                                                    <Text style={styles.rowSaleBadgeText}>{pricing.percentOff > 0 ? `${pricing.percentOff}% OFF` : "SALE"}</Text>
+                                                </View>
+                                            ) : null}
+                                            {inStock <= 0 ? (
+                                                <View style={styles.rowStockOverlayBadge}>
+                                                    <Text style={styles.rowStockOverlayText}>OUT OF STOCK</Text>
+                                                </View>
+                                            ) : null}
                                         </View>
 
                                         <View style={styles.rowContent}>
@@ -397,9 +410,13 @@ const CatalogSearch = () => {
 
                                                 <View style={styles.rowMetricLine}>
                                                     <Text style={styles.rowSoldText}>{soldCount} Sold</Text>
-                                                    <Text style={styles.rowPrice}>$ {Number(item?.price || 0).toFixed(2)}</Text>
+                                                    <View style={styles.rowPriceWrap}>
+                                                        {pricing.isSale ? <Text style={styles.rowOldPrice}>$ {pricing.originalPrice.toFixed(2)}</Text> : null}
+                                                        <Text style={[styles.rowPrice, pricing.isSale && styles.rowPriceSale]}>$ {pricing.displayPrice.toFixed(2)}</Text>
+                                                    </View>
                                                 </View>
                                             </View>
+                                            {inStock <= 0 ? <Text style={styles.rowUnavailable}>Currently unavailable</Text> : null}
                                         </View>
                                     </View>
                                 </View>
@@ -407,7 +424,7 @@ const CatalogSearch = () => {
                         );
                     })}
 
-                    {filteredProducts.length === 0 ? (
+                    {!productsLoading && !productsError && filteredProducts.length === 0 ? (
                         <Text style={styles.emptyText}>No products found.</Text>
                     ) : null}
                 </View>
@@ -654,6 +671,36 @@ const styles = StyleSheet.create({
         width: "100%",
         height: "100%",
     },
+    rowSaleBadge: {
+        position: "absolute",
+        top: 8,
+        right: 8,
+        backgroundColor: "#111",
+        borderRadius: 10,
+        paddingHorizontal: 6,
+        paddingVertical: 3,
+    },
+    rowSaleBadgeText: {
+        color: "#fff",
+        fontSize: 9,
+        fontWeight: "800",
+        letterSpacing: 0.4,
+    },
+    rowStockOverlayBadge: {
+        position: "absolute",
+        top: 8,
+        left: 8,
+        backgroundColor: "rgba(0,0,0,0.82)",
+        borderRadius: 8,
+        paddingHorizontal: 7,
+        paddingVertical: 3,
+    },
+    rowStockOverlayText: {
+        color: "#fff",
+        fontSize: 10,
+        fontWeight: "800",
+        letterSpacing: 0.5,
+    },
     rowContent: {
         flex: 1,
     },
@@ -665,6 +712,9 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         marginLeft: 6,
+    },
+    iconSquareBtnDisabled: {
+        backgroundColor: "#9a9a9a",
     },
     rowName: {
         marginTop: 1,
@@ -711,6 +761,17 @@ const styles = StyleSheet.create({
         fontWeight: "800",
         fontFamily: "serif",
     },
+    rowPriceSale: {
+        color: "#b62020",
+    },
+    rowPriceWrap: {
+        alignItems: "flex-end",
+    },
+    rowOldPrice: {
+        fontSize: 10,
+        color: "#777",
+        textDecorationLine: "line-through",
+    },
     rowStockWrap: {
         flexDirection: "row",
         alignItems: "center",
@@ -725,9 +786,21 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: "#111",
     },
+    rowUnavailable: {
+        marginTop: 4,
+        color: "#7a7a7a",
+        fontSize: 11,
+        fontWeight: "700",
+    },
     emptyText: {
         color: "#666",
         fontSize: 13,
+        paddingVertical: 8,
+    },
+    reduxErrorText: {
+        color: "#b02020",
+        fontSize: 13,
+        fontWeight: "700",
         paddingVertical: 8,
     },
     sectionDivider: {

@@ -28,10 +28,26 @@ const AppPageHeader = ({ title }) => {
     const routeName = String(route?.name || "");
     const resolvedTitle = String(title || PAGE_TITLES[routeName] || routeName || "SnapShop");
     const shouldGoHomeOnLeft = HOME_BEHAVIOR_ROUTES.has(routeName);
+    const findDrawerNavigator = () => {
+        let current = navigation;
+        while (current) {
+            if (typeof current.openDrawer === "function") {
+                return current;
+            }
+            current = current.getParent?.();
+        }
+        return null;
+    };
+    const drawerNav = findDrawerNavigator();
+    const showBackIcon = canGoBack && !shouldGoHomeOnLeft;
 
     const onLeftPress = () => {
-        if (canGoBack && !shouldGoHomeOnLeft) {
+        if (showBackIcon) {
             navigation.goBack();
+            return;
+        }
+        if (drawerNav) {
+            drawerNav.openDrawer();
             return;
         }
         const tabNav = navigation.getParent?.();
@@ -63,7 +79,7 @@ const AppPageHeader = ({ title }) => {
     return (
         <View style={styles.header}>
             <TouchableOpacity onPress={onLeftPress} style={styles.sideButton}>
-                <Ionicons name={canGoBack && !shouldGoHomeOnLeft ? "chevron-back-outline" : "home-outline"} size={24} color="#000" />
+                <Ionicons name={showBackIcon ? "chevron-back-outline" : "menu-outline"} size={24} color="#000" />
             </TouchableOpacity>
             <Text style={styles.headerTitle} numberOfLines={1}>{resolvedTitle}</Text>
             <TouchableOpacity onPress={onRightPress} style={styles.sideButton}>

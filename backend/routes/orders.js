@@ -4,6 +4,7 @@ const authJwt = require("../middleware/authJwt");
 const Order = require("../models/Order");
 const Review = require("../models/Review");
 const Product = require("../models/Product");
+const StockAlert = require("../models/StockAlert");
 const VoucherRedemption = require("../models/VoucherRedemption");
 const User = require("../models/User");
 const { sendToTokens } = require("../services/notifications");
@@ -25,6 +26,61 @@ const STATUS = {
   DELIVERED: "delivered",
   CANCELLED: "cancelled",
 };
+const STOCK_LOW_THRESHOLD = 10;
+
+async function syncStockAlertForProduct(productDoc) {
+  const productId = productDoc?._id;
+  if (!productId) return;
+
+  const count = Number(productDoc.countInStock || 0);
+
+  if (count <= 0) {
+    await StockAlert.updateMany(
+      { product: productId, resolved: false, type: "low" },
+      { resolved: true }
+    );
+
+    const existingOut = await StockAlert.findOne({ product: productId, resolved: false, type: "out" });
+    if (!existingOut) {
+      await StockAlert.create({
+        product: productId,
+        type: "out",
+        threshold: STOCK_LOW_THRESHOLD,
+        countInStock: count,
+      });
+    } else if (existingOut.countInStock !== count) {
+      existingOut.countInStock = count;
+      await existingOut.save();
+    }
+    return;
+  }
+
+  if (count <= STOCK_LOW_THRESHOLD) {
+    await StockAlert.updateMany(
+      { product: productId, resolved: false, type: "out" },
+      { resolved: true }
+    );
+
+    const existingLow = await StockAlert.findOne({ product: productId, resolved: false, type: "low" });
+    if (!existingLow) {
+      await StockAlert.create({
+        product: productId,
+        type: "low",
+        threshold: STOCK_LOW_THRESHOLD,
+        countInStock: count,
+      });
+    } else if (existingLow.countInStock !== count) {
+      existingLow.countInStock = count;
+      await existingLow.save();
+    }
+    return;
+  }
+
+  await StockAlert.updateMany(
+    { product: productId, resolved: false },
+    { resolved: true }
+  );
+}
 
 function normalizeStatus(value) {
   if (!value) return "";
@@ -33,6 +89,24 @@ function normalizeStatus(value) {
   if (lowered === "2") return STATUS.SHIPPED;
   if (lowered === "1") return STATUS.DELIVERED;
   return lowered;
+}
+
+async function sendOrderStatusNotification({ recipientUserId, orderId, status, customBody }) {
+  const recipient = await User.findById(recipientUserId).lean();
+  if (!recipient?.pushToken) return false;
+
+  const recipientName = String(recipient?.name || "").trim() || "there";
+  const normalizedStatus = normalizeStatus(status) || STATUS.PENDING;
+  const body = String(customBody || "").trim()
+    || `Your order is currently ${normalizedStatus}. Check the details now.`;
+
+  await sendToTokens([{ token: recipient.pushToken, type: recipient.pushTokenType || "fcm" }], {
+    title: `Hey there ${recipientName}`,
+    body,
+    data: { orderId: String(orderId), status: normalizedStatus, route: "order-details" },
+  });
+
+  return true;
 }
 
 function aggregateProductQuantities(items = []) {
@@ -62,7 +136,14 @@ async function reserveStockForItems(items = []) {
 
     if (!reserved) {
       for (const applied of appliedReservations) {
-        await Product.findByIdAndUpdate(applied.productId, { $inc: { countInStock: applied.quantity } });
+        const rolledBack = await Product.findByIdAndUpdate(
+          applied.productId,
+          { $inc: { countInStock: applied.quantity } },
+          { new: true, projection: "_id countInStock" }
+        ).lean();
+        if (rolledBack) {
+          await syncStockAlertForProduct(rolledBack);
+        }
       }
 
       const product = await Product.findById(entry.productId, "name countInStock").lean();
@@ -71,6 +152,7 @@ async function reserveStockForItems(items = []) {
       throw new Error(`Insufficient stock for ${productName}. Available: ${available}`);
     }
 
+    await syncStockAlertForProduct(reserved);
     appliedReservations.push(entry);
   }
 
@@ -80,7 +162,14 @@ async function reserveStockForItems(items = []) {
 async function restoreStockForItems(items = []) {
   const aggregated = aggregateProductQuantities(items);
   for (const entry of aggregated) {
-    await Product.findByIdAndUpdate(entry.productId, { $inc: { countInStock: entry.quantity } });
+    const restored = await Product.findByIdAndUpdate(
+      entry.productId,
+      { $inc: { countInStock: entry.quantity } },
+      { new: true, projection: "_id countInStock" }
+    ).lean();
+    if (restored) {
+      await syncStockAlertForProduct(restored);
+    }
   }
 }
 
@@ -296,15 +385,19 @@ router.post("/", authJwt, async (req, res) => {
       await mongoose.model("Promo").findByIdAndUpdate(appliedVoucher.campaignId, { $inc: { usedCount: 1 } });
     }
 
-    const admins = await User.find({ isAdmin: true, pushToken: { $ne: "" } }, "pushToken pushTokenType").lean();
-    const adminTokens = admins
-      .filter((a) => a.pushToken)
-      .map((a) => ({ token: a.pushToken, type: a.pushTokenType || "fcm" }));
-    await sendToTokens(adminTokens, {
-      title: "New order placed",
-      body: `Order ${order.id} has been placed.`,
-      data: { orderId: order.id, route: "admin-orders" },
-    });
+    try {
+      const admins = await User.find({ isAdmin: true, pushToken: { $ne: "" } }, "pushToken pushTokenType").lean();
+      const adminTokens = admins
+        .filter((a) => a.pushToken)
+        .map((a) => ({ token: a.pushToken, type: a.pushTokenType || "fcm" }));
+      await sendToTokens(adminTokens, {
+        title: "New order placed",
+        body: `Order ${order.id} has been placed.`,
+        data: { orderId: order.id, route: "admin-orders" },
+      });
+    } catch (notifyError) {
+      console.error("[orders] admin notification error:", notifyError?.message || notifyError);
+    }
 
     return res.status(201).json(order);
   } catch (error) {
@@ -445,18 +538,50 @@ router.put("/:id", authJwt, async (req, res) => {
       { new: true }
     ).populate("user", "id name email");
 
-    const recipient = await User.findById(existing.user).lean();
-    if (recipient?.pushToken) {
-      await sendToTokens([{ token: recipient.pushToken, type: recipient.pushTokenType || "fcm" }], {
-        title: "Order status updated",
-        body: `Order ${updated.id} is now ${desiredStatus}.`,
-        data: { orderId: updated.id, status: desiredStatus, route: "order-details" },
-      });
-    }
+    await sendOrderStatusNotification({
+      recipientUserId: existing.user,
+      orderId: updated.id,
+      status: desiredStatus,
+      customBody: `Your order status is now ${desiredStatus}. Check the details now.`,
+    });
 
     return res.status(200).json(updated);
   } catch (_error) {
     return res.status(500).json({ message: "Failed to update order" });
+  }
+});
+
+// POST /orders/:id/notify — admin sends manual order status reminder notification
+router.post("/:id/notify", authJwt, async (req, res) => {
+  try {
+    if (!req.user?.isAdmin) {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    const existing = await Order.findById(req.params.id).populate("user", "id name email");
+    if (!existing) return res.status(404).json({ message: "Order not found" });
+
+    const normalizedStatus = normalizeStatus(existing.status) || STATUS.PENDING;
+    const sent = await sendOrderStatusNotification({
+      recipientUserId: existing.user?._id,
+      orderId: existing.id,
+      status: normalizedStatus,
+      customBody: `Your order is currently ${normalizedStatus}. Check the details now.`,
+    });
+
+    if (!sent) {
+      return res.status(200).json({
+        ok: false,
+        message: "User has no registered push token",
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      message: "Notification sent",
+    });
+  } catch (_error) {
+    return res.status(500).json({ message: "Failed to send notification" });
   }
 });
 
