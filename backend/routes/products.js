@@ -17,6 +17,7 @@ const {
 } = require("../services/promoPricing");
 const { sendToTokens } = require("../services/notifications");
 const { sanitizeProfanity } = require("../services/profanityFilter");
+const { uploadLocalImage } = require("../services/cloudinary");
 const config = require("../config");
 
 const router = express.Router();
@@ -226,6 +227,15 @@ function buildImageUrl(req, filename) {
   return `${protocol}://${host}/${config.uploadDir}/${filename}`;
 }
 
+async function resolveUploadedImageUrl(req, file, folder) {
+  if (!file) return "";
+
+  const cloudinaryUrl = await uploadLocalImage(file.path, { folder });
+  if (cloudinaryUrl) return cloudinaryUrl;
+
+  return buildImageUrl(req, file.filename);
+}
+
 function parseBoolean(value, fallback = false) {
   if (value === undefined || value === null) return fallback;
   if (typeof value === "boolean") return value;
@@ -251,13 +261,13 @@ function parseExistingImages(input) {
     .filter(Boolean);
 }
 
-function getUploadedProductImages(req) {
+async function getUploadedProductImages(req) {
   const single = req.files?.image || [];
   const multi = req.files?.images || [];
-  return [...single, ...multi]
-    .map((file) => buildImageUrl(req, file?.filename))
-    .filter(Boolean)
-    .slice(0, 8);
+  const urls = await Promise.all(
+    [...single, ...multi].map((file) => resolveUploadedImageUrl(req, file, "peakplay/products"))
+  );
+  return urls.filter(Boolean).slice(0, 8);
 }
 
 async function refreshProductReviewStats(productId) {
@@ -551,7 +561,11 @@ router.post("/:id/reviews", authJwt, uploadReviewImages, async (req, res) => {
       });
     }
 
-    const images = (req.files || []).map((file) => buildImageUrl(req, file.filename)).slice(0, 3);
+    const images = (
+      await Promise.all(
+        (req.files || []).map((file) => resolveUploadedImageUrl(req, file, "peakplay/reviews"))
+      )
+    ).filter(Boolean).slice(0, 3);
 
     const review = await Review.create({
       product: productId,
@@ -622,7 +636,11 @@ router.put("/:id/reviews/:reviewId", authJwt, uploadReviewImages, async (req, re
       }
     }
 
-    const uploadedImages = (req.files || []).map((file) => buildImageUrl(req, file.filename)).slice(0, 3);
+    const uploadedImages = (
+      await Promise.all(
+        (req.files || []).map((file) => resolveUploadedImageUrl(req, file, "peakplay/reviews"))
+      )
+    ).filter(Boolean).slice(0, 3);
     review.images = [...retainedImages, ...uploadedImages].slice(0, 3);
 
     await review.save();
@@ -646,7 +664,7 @@ router.post("/", authJwt, uploadProductImages, async (req, res) => {
     if (!name || !brand || !price || !category || countInStock === undefined) {
       return res.status(400).json({ message: "name, brand, price, category and countInStock are required" });
     }
-    const uploadedImages = getUploadedProductImages(req);
+    const uploadedImages = await getUploadedProductImages(req);
     const image = uploadedImages[0] || "";
     const product = await Product.create({
       name, brand, price: Number(price), description, richDescription,
@@ -675,7 +693,7 @@ router.put("/:id", authJwt, uploadProductImages, async (req, res) => {
 
     const { name, brand, price, description, richDescription, category,
             countInStock, rating, numReviews, isFeatured } = req.body;
-        const uploadedImages = getUploadedProductImages(req);
+        const uploadedImages = await getUploadedProductImages(req);
         const existingImages = parseExistingImages(req.body.existingImages);
         const mergedImages = [...existingImages, ...uploadedImages].slice(0, 8);
         const image = mergedImages[0] || existing.image;

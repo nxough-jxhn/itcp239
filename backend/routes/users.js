@@ -5,6 +5,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
 const { OAuth2Client } = require("google-auth-library");
+const { uploadLocalImage } = require("../services/cloudinary");
 
 const config = require("../config");
 const authJwt = require("../middleware/authJwt");
@@ -48,6 +49,15 @@ function buildImageUrl(req, filename) {
   return `${protocol}://${host}/${config.uploadDir}/${filename}`;
 }
 
+async function resolveUploadedImageUrl(req, file, folder) {
+  if (!file) return "";
+
+  const cloudinaryUrl = await uploadLocalImage(file.path, { folder });
+  if (cloudinaryUrl) return cloudinaryUrl;
+
+  return buildImageUrl(req, file.filename);
+}
+
 router.post("/register", upload.single("image"), async (req, res) => {
   try {
     const { name, email, password, phone } = req.body;
@@ -64,7 +74,7 @@ router.post("/register", upload.single("image"), async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(String(password), 10);
-    const image = req.file ? buildImageUrl(req, req.file.filename) : "";
+    const image = await resolveUploadedImageUrl(req, req.file, "peakplay/users");
 
     const user = await User.create({
       name: String(name).trim(),
@@ -308,7 +318,7 @@ router.put("/profile/image", authJwt, upload.single("image"), async (req, res) =
       return res.status(400).json({ message: "Profile image is required" });
     }
 
-    const image = buildImageUrl(req, req.file.filename);
+    const image = await resolveUploadedImageUrl(req, req.file, "peakplay/users");
     const user = await User.findByIdAndUpdate(
       req.user.userId,
       { image },
