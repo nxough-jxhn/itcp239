@@ -33,6 +33,7 @@ const STATUS_COLORS = {
 const FALLBACK_USER_IMAGE = "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png";
 const FALLBACK_PRODUCT_IMAGE = "https://cdn.pixabay.com/photo/2012/04/01/17/29/box-23649_960_720.png";
 const USERS_PER_PAGE = 5;
+const BUSINESS_TZ_OFFSET_MINUTES = 8 * 60;
 
 function formatDateTime(value) {
     const d = value ? new Date(value) : null;
@@ -83,26 +84,28 @@ function sameDay(a, b) {
 function toLocalDateKey(value) {
     const d = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(d.getTime())) return "";
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
+    const shifted = new Date(d.getTime() + BUSINESS_TZ_OFFSET_MINUTES * 60000);
+    const y = shifted.getUTCFullYear();
+    const m = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+    const day = String(shifted.getUTCDate()).padStart(2, "0");
     return `${y}-${m}-${day}`;
 }
 
 function toLocalMonthKey(value) {
     const d = value instanceof Date ? value : new Date(value);
     if (Number.isNaN(d.getTime())) return "";
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const shifted = new Date(d.getTime() + BUSINESS_TZ_OFFSET_MINUTES * 60000);
+    const y = shifted.getUTCFullYear();
+    const m = String(shifted.getUTCMonth() + 1).padStart(2, "0");
     return `${y}-${m}`;
 }
 
 function computeDailyRevenue(orders = []) {
     const now = new Date();
-    now.setHours(0, 0, 0, 0);
-
+    const todayKey = toLocalDateKey(now);
     const yesterday = new Date(now);
     yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayKey = toLocalDateKey(yesterday);
 
     let todayRevenue = 0;
     let yesterdayRevenue = 0;
@@ -111,13 +114,12 @@ function computeDailyRevenue(orders = []) {
         const status = String(order?.status || "").toLowerCase();
         if (status !== "delivered") return;
 
-        const orderedAt = new Date(order?.dateOrdered || order?.createdAt || Date.now());
-        orderedAt.setHours(0, 0, 0, 0);
+        const orderedAtKey = toLocalDateKey(order?.dateOrdered || order?.createdAt || Date.now());
         const value = Number(order?.totalPrice || 0);
 
-        if (sameDay(orderedAt, now)) {
+        if (orderedAtKey === todayKey) {
             todayRevenue += value;
-        } else if (sameDay(orderedAt, yesterday)) {
+        } else if (orderedAtKey === yesterdayKey) {
             yesterdayRevenue += value;
         }
     });
@@ -595,6 +597,7 @@ const Dashboard = () => {
                     value={`$ ${Number(totals.revenue || 0).toFixed(2)}`}
                     note={kpiMeta.revenueDeltaText}
                     accent="#0a7a41"
+                    indicator="Total Earned"
                 />
                 <DashboardKpiCard
                     icon="cube-outline"
