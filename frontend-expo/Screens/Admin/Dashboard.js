@@ -396,15 +396,15 @@ const Dashboard = () => {
             const headers = { Authorization: `Bearer ${jwt}` };
 
             const [ordersRes, productsRes, stockRes, promoRes, usersRes, latestReviewsRes] = await Promise.all([
-                axios.get(`${baseURL}orders`, { headers, timeout: 9000 }),
-                axios.get(`${baseURL}products`, { timeout: 9000 }),
-                axios.get(`${baseURL}stock-alerts`, { headers, timeout: 9000 }),
-                axios.get(`${baseURL}promos`, { headers, timeout: 9000 }),
-                axios.get(`${baseURL}users`, { headers, timeout: 9000 }),
+                    axios.get(`${baseURL}orders`, { headers, timeout: 25000 }),
+                    axios.get(`${baseURL}products`, { timeout: 25000 }),
+                    axios.get(`${baseURL}stock-alerts`, { headers, timeout: 25000 }),
+                    axios.get(`${baseURL}promos`, { headers, timeout: 25000 }),
+                    axios.get(`${baseURL}users`, { headers, timeout: 25000 }),
                 axios.get(`${baseURL}products/reviews/latest`, {
                     headers,
                     params: { limit: 3 },
-                    timeout: 9000,
+                        timeout: 25000,
                 }),
             ]);
 

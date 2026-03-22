@@ -23,7 +23,7 @@ import { fetchWishlistIds, toggleWishlistProduct } from "../../Redux/Actions/wis
 import { addToCart } from "../../Redux/Actions/cartActions";
 import { getProductPricing } from "../../assets/common/productPricing";
 
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 20000;
 const FALLBACK_IMAGE = "https://cdn.pixabay.com/photo/2012/04/01/17/29/box-23649_960_720.png";
 
 const CatalogSearch = () => {

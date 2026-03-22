@@ -115,8 +115,8 @@ const OrderDetails = () => {
 
             const nextMap = {};
             const nextDescriptions = {};
-            const results = await Promise.allSettled(
-                productIds.map((id) => axios.get(`${baseURL}products/${id}`, { timeout: 6000 }))
+                const results = await Promise.allSettled(
+                    productIds.map((id) => axios.get(`${baseURL}products/${id}`, { timeout: 20000 }))
             );
 
             results.forEach((result, index) => {

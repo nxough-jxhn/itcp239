@@ -70,7 +70,7 @@ const MyOrders = () => {
             }
 
             const results = await Promise.allSettled(
-                ids.map((id) => axios.get(`${baseURL}products/${id}`, { timeout: 5000 }))
+                ids.map((id) => axios.get(`${baseURL}products/${id}`, { timeout: 20000 }))
             );
 
             const next = {};

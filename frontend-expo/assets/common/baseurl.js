@@ -6,7 +6,7 @@
  */
 import Constants from "expo-constants";
 
-const FALLBACK_API_URL = "http://192.168.1.8:4000/api/v1";
+const FALLBACK_API_URL = "https://peakplay-backend.onrender.com/api/v1";
 
 function normalizeApiUrl(value) {
 	const raw = String(value || "").trim();

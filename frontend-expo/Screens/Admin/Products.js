@@ -20,7 +20,7 @@ import AppPageHeader from "../../Shared/AppPageHeader";
 import Toast from "react-native-toast-message";
 
 const FALLBACK_IMAGE = "https://cdn.pixabay.com/photo/2012/04/01/17/29/box-23649_960_720.png";
-const REQUEST_TIMEOUT_MS = 10000;
+const REQUEST_TIMEOUT_MS = 25000;
 const COL_WIDTHS = {
     image: 88,
     brand: 110,

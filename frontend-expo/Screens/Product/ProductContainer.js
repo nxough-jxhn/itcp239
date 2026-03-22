@@ -33,7 +33,7 @@ const bannerData = [
 ];
 
 const ProductContainer = () => {
-    const REQUEST_TIMEOUT_MS = 8000;
+    const REQUEST_TIMEOUT_MS = 20000;
     const navigation = useNavigation();
     const dispatch = useDispatch();
     const context = useContext(AuthGlobal);

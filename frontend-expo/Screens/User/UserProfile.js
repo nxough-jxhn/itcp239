@@ -14,6 +14,7 @@ import { getJwtToken } from "../../assets/common/authToken";
 import AppPageHeader from "../../Shared/AppPageHeader";
 
 const REQUEST_TIMEOUT_MS = 20000;
+const REQUEST_RETRY_DELAY_MS = 1800;
 
 const friendlyFieldName = {
     phone: "Phone",
@@ -89,10 +90,27 @@ const UserProfile = () => {
         try {
             setRefreshing(true);
             const token = await getJwtToken();
-            const user = await axios.get(`${baseURL}users/${context.stateUser.user.userId}`, {
+            const requestProfile = () => axios.get(`${baseURL}users/${context.stateUser.user.userId}`, {
                 headers: { Authorization: `Bearer ${token}` },
                 timeout: REQUEST_TIMEOUT_MS,
             });
+
+            let user;
+            try {
+                user = await requestProfile();
+            } catch (firstError) {
+                const code = String(firstError?.code || "").toUpperCase();
+                const isTimeout = code === "ECONNABORTED" || String(firstError?.message || "").toLowerCase().includes("timeout");
+                const isNetworkError = !firstError?.response;
+
+                if (isTimeout || isNetworkError) {
+                    await new Promise((resolve) => setTimeout(resolve, REQUEST_RETRY_DELAY_MS));
+                    user = await requestProfile();
+                } else {
+                    throw firstError;
+                }
+            }
+
             hydrateProfileForm(user.data);
         } catch (error) {
             const isUnauthorized = Number(error?.response?.status) === 401;
