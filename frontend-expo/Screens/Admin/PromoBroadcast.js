@@ -101,6 +101,8 @@ const PromoBroadcast = () => {
     const [targetMode, setTargetMode] = useState("products");
     const [targetProductIds, setTargetProductIds] = useState([]);
     const [targetCategoryIds, setTargetCategoryIds] = useState([]);
+    const [productSearch, setProductSearch] = useState("");
+    const [categorySearch, setCategorySearch] = useState("");
 
     const [pendingPayload, setPendingPayload] = useState(null);
     const [conflictInfo, setConflictInfo] = useState(null);
@@ -112,6 +114,18 @@ const PromoBroadcast = () => {
         () => promos.filter((promo) => promo.status === "active" || promo.status === "scheduled").length,
         [promos]
     );
+
+    const filteredProducts = useMemo(() => {
+        const term = String(productSearch || "").trim().toLowerCase();
+        if (!term) return products;
+        return products.filter((product) => String(product?.name || "").toLowerCase().includes(term));
+    }, [products, productSearch]);
+
+    const filteredCategories = useMemo(() => {
+        const term = String(categorySearch || "").trim().toLowerCase();
+        if (!term) return categories;
+        return categories.filter((category) => String(category?.name || "").toLowerCase().includes(term));
+    }, [categories, categorySearch]);
 
     const loadAll = useCallback(async () => {
         try {
@@ -161,6 +175,8 @@ const PromoBroadcast = () => {
         setTargetMode("products");
         setTargetProductIds([]);
         setTargetCategoryIds([]);
+        setProductSearch("");
+        setCategorySearch("");
         setConflictInfo(null);
         setPendingPayload(null);
     };
@@ -551,8 +567,20 @@ const PromoBroadcast = () => {
                         {targetMode === "products" ? (
                             <View style={styles.selectionBox}>
                                 <Text style={styles.selectionTitle}>Select Products ({targetProductIds.length})</Text>
-                                <View style={styles.rowWrap}>
-                                    {products.map((product) => {
+                                <TextInput
+                                    style={styles.searchInput}
+                                    value={productSearch}
+                                    onChangeText={setProductSearch}
+                                    placeholder="Search products"
+                                    placeholderTextColor="#8a8a8a"
+                                />
+                                <ScrollView
+                                    style={styles.selectionScroll}
+                                    contentContainerStyle={styles.chipGrid}
+                                    nestedScrollEnabled
+                                    showsVerticalScrollIndicator
+                                >
+                                    {filteredProducts.map((product) => {
                                         const id = String(product.id || product._id);
                                         const selected = targetProductIds.includes(id);
                                         return (
@@ -567,15 +595,30 @@ const PromoBroadcast = () => {
                                             </TouchableOpacity>
                                         );
                                     })}
-                                </View>
+                                    {filteredProducts.length === 0 ? (
+                                        <Text style={styles.emptySelectionText}>No products match your search.</Text>
+                                    ) : null}
+                                </ScrollView>
                             </View>
                         ) : null}
 
                         {targetMode === "categories" ? (
                             <View style={styles.selectionBox}>
                                 <Text style={styles.selectionTitle}>Select Categories ({targetCategoryIds.length})</Text>
-                                <View style={styles.rowWrap}>
-                                    {categories.map((category) => {
+                                <TextInput
+                                    style={styles.searchInput}
+                                    value={categorySearch}
+                                    onChangeText={setCategorySearch}
+                                    placeholder="Search categories"
+                                    placeholderTextColor="#8a8a8a"
+                                />
+                                <ScrollView
+                                    style={styles.selectionScroll}
+                                    contentContainerStyle={styles.chipGrid}
+                                    nestedScrollEnabled
+                                    showsVerticalScrollIndicator
+                                >
+                                    {filteredCategories.map((category) => {
                                         const id = String(category.id || category._id);
                                         const selected = targetCategoryIds.includes(id);
                                         return (
@@ -590,7 +633,10 @@ const PromoBroadcast = () => {
                                             </TouchableOpacity>
                                         );
                                     })}
-                                </View>
+                                    {filteredCategories.length === 0 ? (
+                                        <Text style={styles.emptySelectionText}>No categories match your search.</Text>
+                                    ) : null}
+                                </ScrollView>
                             </View>
                         ) : null}
                     </>
@@ -812,6 +858,15 @@ const styles = StyleSheet.create({
         padding: 10,
         marginBottom: 10,
         maxHeight: 170,
+        overflow: "hidden",
+    },
+    selectionScroll: {
+        maxHeight: 120,
+    },
+    chipGrid: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        paddingRight: 4,
     },
     selectionTitle: {
         fontSize: 12,
@@ -819,6 +874,17 @@ const styles = StyleSheet.create({
         color: "#555",
         marginBottom: 8,
         textTransform: "uppercase",
+    },
+    searchInput: {
+        backgroundColor: "#fafafa",
+        borderWidth: 1,
+        borderColor: "#d9d9d9",
+        borderRadius: 10,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
+        color: "#111",
+        fontSize: 12,
+        marginBottom: 8,
     },
     smallChip: {
         borderWidth: 1,
@@ -841,6 +907,11 @@ const styles = StyleSheet.create({
     smallChipTextActive: {
         color: "#111",
         fontWeight: "700",
+    },
+    emptySelectionText: {
+        color: "#777",
+        fontSize: 12,
+        paddingVertical: 6,
     },
     conflictBox: {
         backgroundColor: "#f3f3f3",

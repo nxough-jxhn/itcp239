@@ -107,7 +107,7 @@ const DrawerContent = (props) => {
         },
         {
             key: "Promo Broadcast",
-            label: "Promo % Voucher Management",
+            label: "Promo & Voucher Management",
             onPress: () => navigation.navigate("PeakPlay", { screen: "Admin", params: { screen: "Promo Broadcast" } }),
         },
     ];
@@ -159,7 +159,7 @@ const DrawerContent = (props) => {
                                         style={[styles.subItem, focused && styles.subItemActive]}
                                         onPress={() => onClick(child.key, child.onPress)}
                                     >
-                                        <Text style={[styles.subItemText, focused && styles.subItemTextActive]}>- {child.label}</Text>
+                                        <Text style={[styles.subItemText, focused && styles.subItemTextActive]}>{child.label}</Text>
                                     </TouchableOpacity>
                                 );
                             })
