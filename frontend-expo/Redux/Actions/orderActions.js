@@ -11,7 +11,7 @@ import {
     ORDER_DETAIL_FAIL,
 } from "../constants";
 
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 20000;
 
 export const fetchOrders = () => async (dispatch) => {
     try {

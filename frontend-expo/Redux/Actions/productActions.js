@@ -9,7 +9,7 @@ import {
     PRODUCT_DETAIL_FAIL,
 } from "../constants";
 
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 20000;
 
 export const fetchProducts = () => async (dispatch) => {
     try {

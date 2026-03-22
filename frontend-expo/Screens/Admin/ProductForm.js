@@ -183,20 +183,12 @@ const ProductForm = (props) => {
             formData.append("images", imagePart);
         });
 
-        if (localImages.length > 0) {
-            const primary = localImages[0];
-            const primaryUri = "file:///" + primary.split("file:/").join("");
-            formData.append("image", {
-                uri: primaryUri,
-                type: mime.getType(primaryUri) || "image/jpeg",
-                name: primaryUri.split("/").pop() || `product-main-${Date.now()}.jpg`,
-            });
-        }
         const config = {
             headers: {
                 "Content-Type": "multipart/form-data",
                 Authorization: "Bearer " + token,
             },
+            timeout: 20000,
         };
         const productId = item?.id ?? item?._id;
         const thenNav = () => {

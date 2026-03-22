@@ -11,7 +11,7 @@ import {
     WISHLIST_TOGGLE_SUCCESS,
 } from "../constants";
 
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 20000;
 
 export const fetchWishlistIds = () => async (dispatch) => {
     try {

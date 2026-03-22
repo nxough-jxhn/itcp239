@@ -331,7 +331,7 @@ const OrderDetails = () => {
             await axios.put(
                 `${baseURL}orders/${orderId}`,
                 { status: nextStatus },
-                { headers: { Authorization: `Bearer ${token}` }, timeout: 8000 }
+                { headers: { Authorization: `Bearer ${token}` }, timeout: 20000 }
             );
 
             await Promise.all([dispatch(fetchOrderById(orderId)), dispatch(fetchOrders())]);
@@ -356,7 +356,7 @@ const OrderDetails = () => {
             const res = await axios.post(
                 `${baseURL}orders/${orderId}/notify`,
                 {},
-                { headers: { Authorization: `Bearer ${token}` }, timeout: 8000 }
+                { headers: { Authorization: `Bearer ${token}` }, timeout: 20000 }
             );
 
             if (res?.data?.ok === false) {

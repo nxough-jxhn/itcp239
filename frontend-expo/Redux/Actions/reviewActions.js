@@ -6,7 +6,7 @@ import {
     REVIEWS_FAIL,
 } from "../constants";
 
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 20000;
 
 export const fetchReviewsByProduct = ({ productId, sort = "date_desc", rating = 0, withMedia = false }) => async (dispatch) => {
     if (!productId) return;

@@ -30,7 +30,9 @@ const StockAlerts = () => {
         return getJwtToken()
             .then((res) =>
                 axios.get(`${baseURL}stock-alerts`, {
+                    params: { includeResolved: "true" },
                     headers: { Authorization: `Bearer ${res || ""}` },
+                    timeout: 20000,
                 })
             )
             .then((res) => setAlerts(res.data || []))

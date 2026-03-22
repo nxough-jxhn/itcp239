@@ -13,7 +13,7 @@ import AddressMapPicker from "../../Shared/AddressMapPicker";
 import { getJwtToken } from "../../assets/common/authToken";
 import AppPageHeader from "../../Shared/AppPageHeader";
 
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 20000;
 
 const friendlyFieldName = {
     phone: "Phone",
@@ -94,13 +94,18 @@ const UserProfile = () => {
                 timeout: REQUEST_TIMEOUT_MS,
             });
             hydrateProfileForm(user.data);
-        } catch (_error) {
+        } catch (error) {
+            const isUnauthorized = Number(error?.response?.status) === 401;
             Toast.show({
                 topOffset: 60,
                 type: "error",
-                text1: "Unable to load profile",
-                text2: "Backend might be unavailable",
+                text1: isUnauthorized ? "Session expired" : "Unable to load profile",
+                text2: isUnauthorized ? "Please login again" : "Backend might be unavailable",
             });
+            if (isUnauthorized) {
+                logoutUser(context.dispatch);
+                navigation.navigate("User", { screen: "Login" });
+            }
         } finally {
             setRefreshing(false);
         }
